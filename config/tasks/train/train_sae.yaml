@@ -1,0 +1,22 @@
+epochs: 1
+
+report_interval: 100
+val_interval: 100
+num_val_batches: 32
+reconstruction_weight : 1000
+noise_gen_weight : 6
+checkpointing: False
+
+data_loaders:
+  train:
+    split_key: train_idxs
+    batch_size: 1024
+    num_workers: 4
+    transforms:
+      - horizontal_flip
+      - vertical_flip
+      - front_back_reflection
+  validation:
+    split_key: val_idxs
+    batch_size: 1024
+    num_workers: 4
