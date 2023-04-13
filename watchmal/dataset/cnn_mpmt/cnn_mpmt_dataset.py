@@ -5,6 +5,7 @@ Class implementing a mPMT dataset for CNNs in h5 format
 # torch imports
 from torch import from_numpy
 from torch import flip
+from torchvision import transforms
 
 # generic imports
 import numpy as np
@@ -56,7 +57,6 @@ class CNNmPMTDataset(H5Dataset):
         self.data_size = np.insert(self.data_size, 0, n_channels)
         self.collapse_arrays = collapse_arrays
         self.transforms = du.get_transformations(self, transforms)
-
         if padding_type is not None:
             self.padding_type = getattr(self, padding_type)
         else:
@@ -105,7 +105,6 @@ class CNNmPMTDataset(H5Dataset):
         data_dict = super().__getitem__(item)
 
         processed_data = from_numpy(self.process_data(self.event_hit_pmts, self.event_hit_charges))
-        
         processed_data = du.apply_random_transformations(self.transforms, processed_data)
 
         if self.padding_type is not None:
@@ -114,7 +113,9 @@ class CNNmPMTDataset(H5Dataset):
         data_dict["data"] = processed_data
         
         return data_dict
-        
+    def resize(self, data):
+        resize = transforms.Resize((24,40))
+        return resize(data)
     def horizontal_flip(self, data):
         """
         Takes image-like data and returns the data after applying a horizontal flip to the image.

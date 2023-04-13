@@ -1,7 +1,6 @@
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
-from resnet import BasicBlock
 
 class Sine(nn.Module):
     def __init__(self, w0 = 1.):
@@ -10,26 +9,89 @@ class Sine(nn.Module):
     def forward(self, x):
         return torch.sin(self.w0 * x)
     
+def conv1x1(in_planes, out_planes, stride=1, deconv = False):
+    """1x1 convolution"""
+    if deconv : 
+        return nn.ConvTranspose2d(out_planes, in_planes, kernel_size=1, stride=stride, bias=False)
+    else :
+        return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
+
+
+def conv3x3(in_planes, out_planes, stride=1, padding_mode='zeros', deconv = False):
+    """3x3 convolution with padding"""
+    if deconv : 
+        return nn.ConvTranspose2d(out_planes, in_planes, kernel_size=3, stride=stride, padding=1, bias=False, padding_mode=padding_mode)
+    else : 
+        return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False, padding_mode=padding_mode)
+
+class BasicBlock(nn.Module):
+    expansion = 1
+
+    def __init__(self, inplanes, planes, stride=1, downsample=None, conv_pad_mode='zeros', deconv = False):
+        super(BasicBlock, self).__init__()
+        self.deconv = deconv
+        self.conv1 = conv3x3(inplanes, planes, stride, conv_pad_mode, deconv = self.deconv)
+        if deconv :
+            self.bn1 = self.bn1 = nn.BatchNorm2d(inplanes)
+        else : 
+            self.bn1 = nn.BatchNorm2d(planes)
+        
+        self.conv2 = conv3x3(planes, planes, padding_mode=conv_pad_mode, deconv = self.deconv)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.downsample = downsample
+        self.stride = stride
+
+    def forward(self, x):
+        identity = x
+        if self.deconv :
+            out = self.conv2(x)
+            out = F.leaky_relu(self.bn2(out))
+          
+            out = self.conv1(out)
+            out = self.bn1(out)
+    
+        else : 
+            out = self.conv1(x)
+
+            out = self.bn1(out)
+            out = F.leaky_relu(out)
+
+            out = self.conv2(out)
+            out = self.bn2(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        out += identity
+        out = F.leaky_relu(out)
+
+        return out
+       
 class Autoencoder(nn.Module):
-    def __init__(self, g_input_dim, cond_dim, img_size, in_channels, lat_dim):
+    def __init__(self, input_size, num_classes, img_size_x, img_size_y, in_channels, lat_dim, img_channels):
         super(Autoencoder, self).__init__()
-        self.img_size = img_size
+        self.img_size_x = img_size_x
+        self.img_size_y = img_size_y
         self.d = in_channels
+        self.input_size = input_size
+        self.img_channels = img_channels
         self.lat_dim = lat_dim
-        self.conv1 = nn.Conv2d(in_channels=19, out_channels=self.d//4, kernel_size=4, stride=2, padding=1, bias=False)
+        self.num_classes = num_classes
+
+        self.conv1 = nn.Conv2d(in_channels=self.img_channels, out_channels=self.d//4, kernel_size=4, stride=2, padding=1, bias=False)
         self.bn_1 = nn.BatchNorm2d(self.d//4)
         self.conv2 = nn.Conv2d(self.d//4, self.d//2, kernel_size=4, stride=2, padding=1, bias=False)
         self.bn_2 = nn.BatchNorm2d(self.d//2)
         self.conv3 = nn.Conv2d(self.d//2, self.d, kernel_size=4, stride=2, padding=1, bias=False)
         self.bn_3 = nn.BatchNorm2d(self.d)
-        self.fc3 = nn.Linear((self.img_size[0]//8)*(self.img_size[1]//8)*self.d, self.lat_dim)
+        self.fc3 = nn.Linear((self.img_size_x//8)*(self.img_size_y//8)*self.d, self.lat_dim)
 
-        self.fc1 = nn.Linear(self.lat_dim, (self.img_size[0]//8)*(self.img_size[1]//8)*self.d)
+        self.fc1 = nn.Linear(self.lat_dim, (self.img_size_x//8)*(self.img_size_y//8)*self.d)
         self.dc1 = nn.ConvTranspose2d( self.d, self.d//2, 4, 2, 1, bias=False)
         self.dc1_bn = nn.BatchNorm2d(self.d//2)
         self.dc2 = nn.ConvTranspose2d( self.d//2, self.d//4, 4, 2, 1, bias=False)
         self.dc2_bn = nn.BatchNorm2d(self.d//4)
-        self.dc3 = nn.ConvTranspose2d(self.d//4 , 19 , 4, 2, 1, bias=False)
+        self.dc3 = nn.ConvTranspose2d(self.d//4 , self.img_channels , 4, 2, 1, bias=False)
         self.dc3_bn = nn.BatchNorm2d(1)
 
         #Conv blocks in between upsampling convs
@@ -42,8 +104,8 @@ class Autoencoder(nn.Module):
         
 
 ############        noise_gen
-        self.ng_fc1 = nn.Linear(g_input_dim, self.d//2)
-        self.ng_input_2 = nn.Linear(cond_dim,self.d//4)
+        self.ng_fc1 = nn.Linear(self.input_size, self.d//2)
+        self.ng_input_2 = nn.Linear(self.num_classes,self.d//4)
         self.ng_fc2 = nn.Linear(self.d*3//4, self.d)
         self.ng_fc3 = nn.Linear(self.d, self.d*3//4)
         self.ng_fc4 = nn.Linear(self.d*3//4, self.lat_dim)
@@ -68,14 +130,14 @@ class Autoencoder(nn.Module):
         x = self.block2(x)
         x = self.conv3(x)
         x = F.leaky_relu(self.bn_3(x))
-        x = x.view(-1,(self.img_size[0]//8)*(self.img_size[1]//8)*self.d)
+        x = x.view(-1,(self.img_size_x//8)*(self.img_size_y//8)*self.d)
 
         #Latent vector
         y = self.fc3(x)
 
         #Decoder
         x = F.leaky_relu(self.fc1(y))
-        x = x.view(-1,self.d,(self.img_size[0]//8),(self.img_size[1]//8))
+        x = x.view(-1,self.d,(self.img_size_x//8),(self.img_size_y//8))
         x = self.dc1(x)
         x = F.leaky_relu(self.dc1_bn(x))
         x = self.dblock1(x)
@@ -91,7 +153,7 @@ class Autoencoder(nn.Module):
     def generate(self,x):
         #Duplicate decoder part
         x = F.leaky_relu(self.fc1(x))
-        x = x.view(-1,self.d,(self.img_size[0]//8),(self.img_size[1]//8))
+        x = x.view(-1,self.d,(self.img_size_x//8),(self.img_size_y//8))
         x = self.dc1(x)
         x = F.leaky_relu(self.dc1_bn(x))
         x = self.dblock1(x)
@@ -111,7 +173,9 @@ class Autoencoder(nn.Module):
         x = F.leaky_relu(self.ng_fc3(x), 0.2)
         x = self.ng_fc4(x)
         return x
-    
+
+
+"""
 from watchmal.dataset.cnn_mpmt.cnn_mpmt_dataset import CNNmPMTDataset
 
 cnn_dataset = CNNmPMTDataset(h5file='/gpfs02/work/pdeperio/machine_learning/data/IWCD_mPMT_Short/IWCD_mPMT_Short_emgp0_E0to1000MeV_digihits.h5',
@@ -121,3 +185,4 @@ train_dataset, test_dataset, val_dataset = random_split(cnn_dataset, [17611162,4
 
 train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers = 20)
 test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers = 20)
+"""

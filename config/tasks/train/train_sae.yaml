@@ -11,7 +11,7 @@ data_loaders:
   train:
     split_key: train_idxs
     batch_size: 1024
-    num_workers: 4
+    num_workers: 2
     transforms:
       - horizontal_flip
       - vertical_flip
@@ -19,4 +19,4 @@ data_loaders:
   validation:
     split_key: val_idxs
     batch_size: 1024
-    num_workers: 4
+    num_workers: 2
