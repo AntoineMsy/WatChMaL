@@ -6,7 +6,7 @@ Class implementing a mPMT dataset for CNNs in h5 format
 from torch import from_numpy
 from torch import flip
 from torchvision import transforms
-
+import torch.nn.functional as F
 # generic imports
 import numpy as np
 import torch
@@ -48,7 +48,6 @@ class CNNmPMTDataset(H5Dataset):
             i.e. provide the sum of PMT charges in each mPMT instead of providing all PMT charges.
         """
         super().__init__(h5file)
-
         self.mpmt_positions = np.load(mpmt_positions_file)['mpmt_image_positions']
         self.data_size = np.max(self.mpmt_positions, axis=0) + 1
         self.barrel_rows = [row for row in range(self.data_size[0]) if
@@ -113,9 +112,11 @@ class CNNmPMTDataset(H5Dataset):
         data_dict["data"] = processed_data
         
         return data_dict
-    def resize(self, data):
-        resize = transforms.Resize((24,40))
-        return resize(data)
+
+    def pad(self, data):
+        pad = (0,0,1,1)
+        return F.pad(data,pad,"constant",0)
+
     def horizontal_flip(self, data):
         """
         Takes image-like data and returns the data after applying a horizontal flip to the image.

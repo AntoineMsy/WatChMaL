@@ -153,13 +153,14 @@ class AutoEncoderEngine:
         with torch.set_grad_enabled(train):
             # Move the data and the labels to the GPU (if using CPU this has no effect)
             data = self.data.to(self.device)
+            print(data.size())
             labels = self.labels.to(self.device)
-            y_onehot = torch.FloatTensor(self.batch_size, self.model.num_classes)
-            y_onehot.zero()
-            cond_x = y_onehot.scatter(1, cond_x.reshape([-1,1]),1).to(self.device)
+            y_onehot = torch.FloatTensor(self.batch_size, self.model.num_classes).to(self.device)
+            y_onehot.zero_()
+            cond_x = y_onehot.scatter(1, labels.reshape([-1,1]),1).to(self.device)
             self.model.zero_grad()
             autoencoder_output, y = self.model(data)
-            
+            print(autoencoder_output.size())
             loss_mse = self.criterion(autoencoder_output,data) #use MSE
 
             rand_x = torch.rand(self.batch_size, self.model.input_size).to(self.device) ### Generate input noise for the noise generator

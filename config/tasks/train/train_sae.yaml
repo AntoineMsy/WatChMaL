@@ -13,9 +13,7 @@ data_loaders:
     batch_size: 1024
     num_workers: 2
     transforms:
-      - horizontal_flip
-      - vertical_flip
-      - front_back_reflection
+      - pad
   validation:
     split_key: val_idxs
     batch_size: 1024
