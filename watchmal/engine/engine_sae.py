@@ -148,19 +148,17 @@ class AutoEncoderEngine:
         Returns
         =======
         dict
-            Dictionary containing loss, predicted labels, softmax, accuracy, and raw model outputs
+            Dictionary containing loss, predicted labels, and raw model outputs
         """
         with torch.set_grad_enabled(train):
             # Move the data and the labels to the GPU (if using CPU this has no effect)
             data = self.data.to(self.device)
-            print(data.size())
             labels = self.labels.to(self.device)
             y_onehot = torch.FloatTensor(self.batch_size, self.model.num_classes).to(self.device)
             y_onehot.zero_()
             cond_x = y_onehot.scatter(1, labels.reshape([-1,1]),1).to(self.device)
             self.model.zero_grad()
             autoencoder_output, y = self.model(data)
-            print(autoencoder_output.size())
             loss_mse = self.criterion(autoencoder_output,data) #use MSE
 
             rand_x = torch.rand(self.batch_size, self.model.input_size).to(self.device) ### Generate input noise for the noise generator
@@ -261,7 +259,7 @@ class AutoEncoderEngine:
                 self.iteration += 1
                 
                 # get relevant attributes of result for logging
-                train_metrics = {"iteration": self.iteration, "epoch": self.epoch, "loss": res["loss"], "accuracy": res["accuracy"]}
+                train_metrics = {"iteration": self.iteration, "epoch": self.epoch, "loss": res["sinkhorn_loss"]}
                 
                 # record the metrics for the mini-batch in the log
                 self.train_log.record(train_metrics)
@@ -273,8 +271,8 @@ class AutoEncoderEngine:
                     previous_iteration_time = iteration_time
                     iteration_time = time()
 
-                    print("... Iteration %d ... Epoch %d ... Step %d/%d  ... Training Loss %1.3f ... Training Accuracy %1.3f ... Time Elapsed %1.3f ... Iteration Time %1.3f" %
-                          (self.iteration, self.epoch+1, self.step, len(train_loader), res["loss"], res["accuracy"], iteration_time - start_time, iteration_time - previous_iteration_time))
+                    print("... Iteration %d ... Epoch %d ... Step %d/%d  ... Training Loss %1.3f ...  Time Elapsed %1.3f ... Iteration Time %1.3f" %
+                          (self.iteration, self.epoch+1, self.step, len(train_loader), res["sinkhorn_loss"], iteration_time - start_time, iteration_time - previous_iteration_time))
             
             if self.scheduler is not None:
                 self.scheduler.step()
@@ -342,14 +340,13 @@ class AutoEncoderEngine:
             global_val_sloss = np.mean(global_val_metrics["sinkhorn_loss"])
             global_val_mseloss = np.mean(global_val_metrics["mse_loss"])
             global_val_ngloss = np.mean(global_val_metrics["noise_gen_loss"])
-            global_val_accuracy = np.mean(global_val_metrics["accuracy"])
 
             val_metrics["sinkhorn_loss"] = global_val_sloss
             val_metrics["mse_loss"] = global_val_mseloss
             val_metrics["noise_gen_loss"] = global_val_ngloss
             val_metrics["epoch"] = self.epoch
 
-            if val_metrics["loss"] < self.best_validation_loss:
+            if val_metrics["sinkhorn_loss"] < self.best_validation_loss:
                 self.best_validation_loss = val_metrics["sinkhorn_loss"]
                 print('best validation loss so far!: {}'.format(self.best_validation_loss))
                 self.save_state("BEST")
@@ -380,7 +377,7 @@ class AutoEncoderEngine:
             self.model.eval()
             
             # Variables for the confusion matrix
-            loss, accuracy, indices, labels, predictions, softmaxes= [],[],[],[],[],[]
+            loss, indices, labels, predictions, softmaxes= [],[],[],[],[],[]
             
             # Extract the event data and label from the DataLoader iterator
             for it, eval_data in enumerate(self.data_loaders["test"]):
@@ -407,7 +404,7 @@ class AutoEncoderEngine:
                 eval_iterations += 1
         
         # convert arrays to torch tensors
-        print("loss : " + str(eval_sloss/eval_iterations) + " accuracy : ")
+        print("loss : " + str(eval_sloss/eval_iterations))
 
         iterations = np.array([eval_iterations])
         loss = np.array([eval_sloss])

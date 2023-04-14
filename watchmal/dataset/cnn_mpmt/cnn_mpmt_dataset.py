@@ -50,12 +50,15 @@ class CNNmPMTDataset(H5Dataset):
         super().__init__(h5file)
         self.mpmt_positions = np.load(mpmt_positions_file)['mpmt_image_positions']
         self.data_size = np.max(self.mpmt_positions, axis=0) + 1
+        
         self.barrel_rows = [row for row in range(self.data_size[0]) if
                             np.count_nonzero(self.mpmt_positions[:, 0] == row) == self.data_size[1]]
         n_channels = pmts_per_mpmt
         self.data_size = np.insert(self.data_size, 0, n_channels)
+       
         self.collapse_arrays = collapse_arrays
         self.transforms = du.get_transformations(self, transforms)
+ 
         if padding_type is not None:
             self.padding_type = getattr(self, padding_type)
         else:
@@ -92,7 +95,7 @@ class CNNmPMTDataset(H5Dataset):
         # fix barrel array indexing to match endcaps in xyz ordering
         barrel_data = data[:, self.barrel_rows, :]
         data[:, self.barrel_rows, :] = barrel_data[barrel_map_array_idxs, :, :]
-
+        
         # collapse arrays if desired
         if self.collapse_arrays:
             data = np.expand_dims(np.sum(data, 0), 0)
@@ -100,11 +103,9 @@ class CNNmPMTDataset(H5Dataset):
         return data
 
     def __getitem__(self, item):
-
         data_dict = super().__getitem__(item)
-
         processed_data = from_numpy(self.process_data(self.event_hit_pmts, self.event_hit_charges))
-        processed_data = du.apply_random_transformations(self.transforms, processed_data)
+        processed_data = self.pad(processed_data)
 
         if self.padding_type is not None:
             processed_data = self.padding_type(processed_data)
@@ -114,8 +115,8 @@ class CNNmPMTDataset(H5Dataset):
         return data_dict
 
     def pad(self, data):
-        pad = (0,0,1,1)
-        return F.pad(data,pad,"constant",0)
+        pad_val = (0,0,2,1)
+        return F.pad(data,pad_val,"constant",0)
 
     def horizontal_flip(self, data):
         """
