@@ -1,8 +1,8 @@
 _target_: watchmal.model.sinkhornAE.Autoencoder
-input_size : 64
+input_size : 128
 num_classes : 4
 img_size_x : 32
 img_size_y : 40
 in_channels : 1024
-lat_dim : 16
+lat_dim : 128
 img_channels : 19

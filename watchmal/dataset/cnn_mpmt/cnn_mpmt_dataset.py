@@ -5,7 +5,7 @@ Class implementing a mPMT dataset for CNNs in h5 format
 # torch imports
 from torch import from_numpy
 from torch import flip
-from torchvision import transforms
+from torchvision import transforms as tvtf
 import torch.nn.functional as F
 # generic imports
 import numpy as np
@@ -50,7 +50,7 @@ class CNNmPMTDataset(H5Dataset):
         super().__init__(h5file)
         self.mpmt_positions = np.load(mpmt_positions_file)['mpmt_image_positions']
         self.data_size = np.max(self.mpmt_positions, axis=0) + 1
-        
+        self.norm_transform = tvtf.Normalize(mean=[0.5], std=[0.5])
         self.barrel_rows = [row for row in range(self.data_size[0]) if
                             np.count_nonzero(self.mpmt_positions[:, 0] == row) == self.data_size[1]]
         n_channels = pmts_per_mpmt
@@ -105,8 +105,10 @@ class CNNmPMTDataset(H5Dataset):
     def __getitem__(self, item):
         data_dict = super().__getitem__(item)
         processed_data = from_numpy(self.process_data(self.event_hit_pmts, self.event_hit_charges))
-        processed_data = self.pad(processed_data)
+        #if sae do processed_data = self.pad(self.norm_transform(processed_data))
 
+        #processed_data = du.apply_random_transformations(self.transforms, processed_data)
+        processed_data = du.apply_transformations(self.transforms, processed_data)
         if self.padding_type is not None:
             processed_data = self.padding_type(processed_data)
 
@@ -117,7 +119,9 @@ class CNNmPMTDataset(H5Dataset):
     def pad(self, data):
         pad_val = (0,0,2,1)
         return F.pad(data,pad_val,"constant",0)
-
+    def normalize(self, data):
+        return self.norm_transform(data)
+    
     def horizontal_flip(self, data):
         """
         Takes image-like data and returns the data after applying a horizontal flip to the image.

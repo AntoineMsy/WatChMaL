@@ -6,7 +6,7 @@ defaults:
     - data: iwcd_short
     - data/dataset: iwcd_cnn_short
     - model: sae
-    - engine: autoencoder
+    - engine: classifier
     - tasks/train: train_sae
     - optimizers@tasks.train.optimizers: adam
     - schedulers@tasks.train.schedulers : exponential

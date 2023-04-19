@@ -27,6 +27,14 @@ import copy
 from watchmal.dataset.data_utils import get_data_loader
 from watchmal.utils.logging_utils import CSVData
 
+#Clustering imports
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+import seaborn as sns
+import pandas as pd
+import xgboost as xgb
+from sklearn.model_selection import train_test_split
+
 class AutoEncoderEngine:
     """Engine for performing training or evaluation  for a classification network."""
     def __init__(self, model, rank, gpu, dump_path, label_set=None):
@@ -163,10 +171,22 @@ class AutoEncoderEngine:
 
             rand_x = torch.rand(self.batch_size, self.model.input_size).to(self.device) ### Generate input noise for the noise generator
             rand_y = self.model.generate_noise(rand_x,cond_x) ### Generate noise from random vector and conditional params
-            ng_loss = self.loss_func(torch.cat([y,cond_x],1), torch.cat([rand_y,cond_x],1)) ### noise generator losss, conditional params added to compute also loss for generating noise close to this from other conditionals
+            try :
+                ng_loss = self.loss_func(torch.cat([y,cond_x],1), torch.cat([rand_y,cond_x],1)) ### noise generator losss, conditional params added to compute also loss for generating noise close to this from other conditionals
+            except :
+                print(y.size())
+                print(cond_x.size())
+                print(rand_y.size())
+                print(cond_x.size())
+                print( " ... ")
+                print(data.size)
+                print(labels.size)
+                
             self.loss = self.noise_gen_weight*ng_loss+ self.reconstruction_weight*loss_mse
+            
 
             result = {'decoded_img': autoencoder_output,
+                      "cond_x" : cond_x,
                       'sinkhorn_loss': self.loss.item(),
                       'mse_loss': loss_mse.item(),
                       'noise_gen_loss' : ng_loss.item()}
@@ -377,7 +397,7 @@ class AutoEncoderEngine:
             self.model.eval()
             
             # Variables for the confusion matrix
-            loss, indices, labels, predictions, softmaxes= [],[],[],[],[],[]
+            loss, indices, labels, zs, softmaxes= [],[],[],[],[],[]
             
             # Extract the event data and label from the DataLoader iterator
             for it, eval_data in enumerate(self.data_loaders["test"]):
@@ -390,6 +410,8 @@ class AutoEncoderEngine:
                 
                 # Run the forward procedure and output the result
                 result = self.forward(train=False)
+                
+                generated_noise = [self.model.generate_noise(torch.rand(1, self.model.input_size).to(self.device),result["cond_x"][idx:idx+1].to(self.device)).cpu().detach().numpy() for idx in range(np.shape(self.labels.detach().numpy())[0])]
 
                 eval_sloss += result['sinkhorn_loss']
                 eval_mseloss += result['mse_loss']
@@ -398,7 +420,7 @@ class AutoEncoderEngine:
                 # Add the local result to the final result
                 indices.extend(eval_indices.numpy())
                 labels.extend(self.labels.numpy())
-                
+                zs.append(generated_noise.numpy())
                 print("eval_iteration : " + str(it) + " eval_loss : " + str(result["sinkhorn_loss"]) + " mse_loss : " + str(result["mse_loss"] + " noise generator loss : " + str(result["noise_gen_loss"])))
             
                 eval_iterations += 1
@@ -414,8 +436,8 @@ class AutoEncoderEngine:
         
         indices     = np.array(indices)
         labels      = np.array(labels)
-
-        local_eval_results_dict = {"indices":indices, "labels":labels}
+        all_zs = np.array(zs)
+        local_eval_results_dict = {"indices":indices, "labels":labels, "all_zs" : all_zs}
 
         if self.is_distributed:
             # Gather results from all processes
@@ -428,9 +450,8 @@ class AutoEncoderEngine:
                 
                 indices     = np.array(global_eval_results_dict["indices"].cpu())
                 labels      = np.array(global_eval_results_dict["labels"].cpu())
-                predictions = np.array(global_eval_results_dict["predictions"].cpu())
-                softmaxes   = np.array(global_eval_results_dict["softmaxes"].cpu())
-        
+                all_zs = np.array(global_eval_results_dict["all_zs"].cpu())
+                
         if self.rank == 0:
 #            print("Sorting Outputs...")
 #            sorted_indices = np.argsort(indices)

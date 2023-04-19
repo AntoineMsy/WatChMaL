@@ -99,6 +99,13 @@ def get_transformations(transformations, transform_names):
     else:
         return None
 
+def apply_transformations(transforms, data, segmented_labels=None):
+    if transforms is not None:
+        for transformation in transforms:
+            data = transformation(data)
+            if segmented_labels is not None:
+                segmented_labels = transformation(segmented_labels)
+    return data
 
 def apply_random_transformations(transforms, data, segmented_labels=None):
     """
