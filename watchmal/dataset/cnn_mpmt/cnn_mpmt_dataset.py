@@ -10,7 +10,6 @@ import torch.nn.functional as F
 # generic imports
 import numpy as np
 import torch
-from sklearn.preprocessing import MinMaxScaler
 
 # WatChMaL imports
 from watchmal.dataset.h5_dataset import H5Dataset
@@ -59,7 +58,7 @@ class CNNmPMTDataset(H5Dataset):
        
         self.collapse_arrays = collapse_arrays
         self.transforms = du.get_transformations(self, transforms)
-        self.scaler = MinMaxScaler((-1,1))
+    
 
         if padding_type is not None:
             self.padding_type = getattr(self, padding_type)
@@ -97,7 +96,9 @@ class CNNmPMTDataset(H5Dataset):
         # fix barrel array indexing to match endcaps in xyz ordering
         barrel_data = data[:, self.barrel_rows, :]
         data[:, self.barrel_rows, :] = barrel_data[barrel_map_array_idxs, :, :]
-        data = self.scaler.fit_transform(data.reshape(-1, data.shape[-1])).reshape(data.shape)
+        #print(data.shape)
+        #data = data/np.max(data)
+        #data = self.scaler.fit_transform(data.reshape(-1, data.shape[-1])).reshape(data.shape)
         # collapse arrays if desired
         if self.collapse_arrays:
             data = np.expand_dims(np.sum(data, 0), 0)

@@ -270,7 +270,7 @@ class Autoencoder(nn.Module):
 
         #x = F.leaky_relu(self.dc3_bn(x))
 
-        return torch.tanh(x), y
+        return x, y
     
     def classify(self,x):
         #Duplicate encoder part with changed FC end layer
@@ -306,7 +306,7 @@ class Autoencoder(nn.Module):
         #x = self.dblock2(x)
         x = self.dc3(x)
         #x = F.leaky_relu(self.dc3_bn(x))
-        return torch.tanh(x)
+        return x
     
     def generate_noise(self, x, cond_x):
         #Noise generator MLP

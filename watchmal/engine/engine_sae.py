@@ -161,17 +161,20 @@ class AutoEncoderEngine:
         with torch.set_grad_enabled(train):
             # Move the data and the labels to the GPU (if using CPU this has no effect)
             data = self.data.to(self.device)
-            print(torch.max(data))
+            bs = data.size()[0]
+            if bs != self.batch_size :
+                print(bs)
+            #print(torch.mean(data))
             labels = self.labels.to(self.device)
-            y_onehot = torch.FloatTensor(self.batch_size, self.model.num_classes).to(self.device)
+            y_onehot = torch.FloatTensor(bs, self.model.num_classes).to(self.device)
             y_onehot.zero_()
             cond_x = y_onehot.scatter(1, labels.reshape([-1,1]),1).to(self.device)
             self.model.zero_grad()
             autoencoder_output, y = self.model(data)
-            print(torch.max(autoencoder_output))
+            #print(torch.mean(autoencoder_output))
             loss_mse = self.criterion(autoencoder_output,data) #use MSE
 
-            rand_x = torch.rand(self.batch_size, self.model.input_size).to(self.device) ### Generate input noise for the noise generator
+            rand_x = torch.rand(bs, self.model.input_size).to(self.device) ### Generate input noise for the noise generator
             rand_y = self.model.generate_noise(rand_x,cond_x) ### Generate noise from random vector and conditional params
             try :
                 ng_loss = self.loss_func(torch.cat([y,cond_x],1), torch.cat([rand_y,cond_x],1)) ### noise generator losss, conditional params added to compute also loss for generating noise close to this from other conditionals
@@ -181,19 +184,19 @@ class AutoEncoderEngine:
                 print(rand_y.size())
                 print(cond_x.size())
                 print( " ... ")
-                print(data.size)
-                print(labels.size)
+                print(data.size())
+                print(labels.size())
 
             self.loss = self.noise_gen_weight*ng_loss+ self.reconstruction_weight*loss_mse
             
 
             result = {'decoded_img': autoencoder_output,
-                      "cond_x" : cond_x,
-                      'sinkhorn_loss': self.loss.item(),
-                      'mse_loss': loss_mse.item(),
-                      'noise_gen_loss' : ng_loss.item()}
-            
-        return result
+                    "cond_x" : cond_x,
+                    'sinkhorn_loss': self.loss.item(),
+                    'mse_loss': loss_mse.item(),
+                    'noise_gen_loss' : ng_loss.item()}
+        
+            return result
     
     def backward(self):
         """Backward pass using the loss computed for a mini-batch"""
