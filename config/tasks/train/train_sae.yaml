@@ -3,8 +3,8 @@ epochs: 1
 report_interval: 100
 val_interval: 100
 num_val_batches: 32
-reconstruction_weight : 500
-noise_gen_weight : 1
+reconstruction_weight : 1000
+noise_gen_weight : 6
 checkpointing: False
 
 data_loaders:
