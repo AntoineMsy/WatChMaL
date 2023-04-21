@@ -90,6 +90,10 @@ class AutoEncoderEngine:
         
         self.optimizer = None
         self.scheduler = None
+
+        self.reconstruction_weight = 1000
+        self.noise_gen_weight = 6
+
     
     def configure_optimizers(self, optimizer_config):
         """Instantiate an optimizer from a hydra config."""
@@ -162,8 +166,6 @@ class AutoEncoderEngine:
             # Move the data and the labels to the GPU (if using CPU this has no effect)
             data = self.data.to(self.device)
             bs = data.size()[0]
-            if bs != self.batch_size :
-                print(bs)
             #print(torch.mean(data))
             labels = self.labels.to(self.device)
             y_onehot = torch.FloatTensor(bs, self.model.num_classes).to(self.device)
@@ -224,7 +226,6 @@ class AutoEncoderEngine:
         #other training params useful in forward
         self.reconstruction_weight = train_config.reconstruction_weight
         self.noise_gen_weight = train_config.noise_gen_weight
-        self.batch_size = train_config.data_loaders.train.batch_size
 
         #initialize model params used in forward
 
@@ -402,7 +403,7 @@ class AutoEncoderEngine:
             self.model.eval()
             
             # Variables for the confusion matrix
-            loss, indices, labels, zs, softmaxes= [],[],[],[],[],[]
+            loss, indices, labels, zs, softmaxes= [],[],[],[],[]
             
             # Extract the event data and label from the DataLoader iterator
             for it, eval_data in enumerate(self.data_loaders["test"]):
@@ -419,16 +420,19 @@ class AutoEncoderEngine:
                 generated_noise = [self.model.generate_noise(torch.rand(1, self.model.input_size).to(self.device),result["cond_x"][idx:idx+1].to(self.device)).cpu().detach().numpy() for idx in range(np.shape(self.labels.detach().numpy())[0])]
 
                 eval_sloss += result['sinkhorn_loss']
-                eval_mseloss += result['mse_loss']
-                eval_ngloss += result['noise_gen_loss']
+                evalmse_loss += result['mse_loss']
+                evalng_loss += result['noise_gen_loss']
                 
                 # Add the local result to the final result
                 indices.extend(eval_indices.numpy())
                 labels.extend(self.labels.numpy())
-                zs.append(generated_noise.numpy())
-                print("eval_iteration : " + str(it) + " eval_loss : " + str(result["sinkhorn_loss"]) + " mse_loss : " + str(result["mse_loss"] + " noise generator loss : " + str(result["noise_gen_loss"])))
+                zs.append(generated_noise)
+                
+                if eval_iterations%100 == 0:
+                    print("eval_iteration : " + str(it) + " eval_loss : " + str(result["sinkhorn_loss"]) + " mse_loss : " + str(result["mse_loss"]) + " noise generator loss : " + str(result["noise_gen_loss"]))
             
                 eval_iterations += 1
+                
         
         # convert arrays to torch tensors
         print("loss : " + str(eval_sloss/eval_iterations))
