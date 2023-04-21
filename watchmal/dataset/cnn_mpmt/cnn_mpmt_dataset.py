@@ -122,6 +122,12 @@ class CNNmPMTDataset(H5Dataset):
     def pad(self, data):
         pad_val = (0,0,2,1)
         return F.pad(data,pad_val,"constant",0)
+
+     
+    def unpad(self,data):
+        unpad_val = (0,0,-2,-1)
+        return F.pad(data,unpad_val,"constant",0)
+    
     def normalize(self, data):
         return self.norm_transform(data)
     

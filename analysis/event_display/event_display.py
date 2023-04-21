@@ -11,8 +11,8 @@ import copy
 from contextlib import nullcontext
 
 
-def plot_event_2d(pmt_data, data_coordinates, pmt_coordinates, fig_width=None, title=None, style=None,
-                  color_label=None, color_map=plt.cm.plasma, color_norm=colors.LogNorm(), show_zero=False):
+def plot_event_2d(pmt_data, data_coordinates, pmt_coordinates, label = None, fig_width=None, title=None, style=None,
+                  color_label=None, color_map=plt.cm.plasma, color_norm=colors.LogNorm(), show_zero=False, fig_size = None):
     """
     Plots 2D event display from PMT data
 
@@ -44,6 +44,7 @@ def plot_event_2d(pmt_data, data_coordinates, pmt_coordinates, fig_width=None, t
     fig: matplotlib.figure.Figure
     ax: matplotlib.axes.Axes
     """
+    single_plot = False
     if not show_zero:
         pmt_data[pmt_data == 0] = np.nan
     color_map = copy.copy(color_map)
@@ -57,10 +58,16 @@ def plot_event_2d(pmt_data, data_coordinates, pmt_coordinates, fig_width=None, t
     if fig_width is None:
         fig_width = matplotlib.rcParams['figure.figsize'][0]
     scale = fig_width/20
-    fig_size = (20*scale, 16*scale*axis_ranges[1]/axis_ranges[0])
+    if fig_size == None :
+        fig_size = (20*scale, 16*scale*axis_ranges[1]/axis_ranges[0])
+        single_plot = True
     pmt_circles = [Circle((pos[0], pos[1]), radius=0.48) for pos in pmt_coordinates]
     with plt.style.context(style) if style else nullcontext():
-        fig, ax = plt.subplots(figsize=fig_size)
+        if single_plot :
+            fig, ax = plt.subplots(figsize = fig_size)
+        else :  
+            ax = plt.subplot(fig_size)
+
         ax.set_aspect(1)
         ax.add_collection(PatchCollection(pmt_circles, facecolor='none', linewidths=1*scale, edgecolors=edge_color))
         pmts = ax.scatter(data_coordinates[:, 0], data_coordinates[:, 1], c=pmt_data.flatten(), s=7*scale*scale, cmap=color_map, norm=color_norm)
@@ -70,10 +77,12 @@ def plot_event_2d(pmt_data, data_coordinates, pmt_coordinates, fig_width=None, t
         ax.set_ylim([ax_min[1], ax_max[1]])
         ax.axes.xaxis.set_visible(False)
         ax.axes.yaxis.set_visible(False)
-        fig.colorbar(pmts, ax=ax, pad=0, label=color_label)
+        #plt.colorbar(pmts, ax=ax, pad=0, label=color_label)
     if title is not None:
+        if label is not None :
+            title += " class : " + str(label)
         ax.set_title(title)
-    return fig, ax
+    return ax
 
 
 def plot_event_3d(pmt_data, data_coordinates, unhit_pmt_coordinates=None, fig_size=None, zoom=1.4, title=None,
