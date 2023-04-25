@@ -77,11 +77,11 @@ def plot_event_2d(pmt_data, data_coordinates, pmt_coordinates, label = None, fig
         ax.set_ylim([ax_min[1], ax_max[1]])
         ax.axes.xaxis.set_visible(False)
         ax.axes.yaxis.set_visible(False)
-        #plt.colorbar(pmts, ax=ax, pad=0, label=color_label)
+        plt.colorbar(pmts, ax=ax, fraction=0.046, pad=0.04, label=color_label)
     if title is not None:
         if label is not None :
             title += " class : " + str(label)
-        ax.set_title(title)
+        ax.set_title(title, fontsize = 10)
     return ax
 
 

@@ -77,6 +77,7 @@ class AutoEncoderEngine:
         # define the placeholder attributes
         self.data = None
         self.labels = None
+        self.vars = None
         self.loss = None
 
         # logging attributes
@@ -165,12 +166,15 @@ class AutoEncoderEngine:
         with torch.set_grad_enabled(train):
             # Move the data and the labels to the GPU (if using CPU this has no effect)
             data = self.data.to(self.device)
+            vars = self.vars.to(self.device)
             bs = data.size()[0]
             #print(torch.mean(data))
             labels = self.labels.to(self.device)
             y_onehot = torch.FloatTensor(bs, self.model.num_classes).to(self.device)
             y_onehot.zero_()
             cond_x = y_onehot.scatter(1, labels.reshape([-1,1]),1).to(self.device)
+            cond_x = torch.concat((cond_x,vars),dim=1)
+
             self.model.zero_grad()
             autoencoder_output, y = self.model(data)
             #print(torch.mean(autoencoder_output))
@@ -194,6 +198,7 @@ class AutoEncoderEngine:
 
             result = {'decoded_img': autoencoder_output,
                     "cond_x" : cond_x,
+                    "y" : y.cpu().detach().numpy(),
                     'sinkhorn_loss': self.loss.item(),
                     'mse_loss': loss_mse.item(),
                     'noise_gen_loss' : ng_loss.item()}
@@ -272,7 +277,7 @@ class AutoEncoderEngine:
                 # Train on batch
                 self.data = train_data['data']
                 self.labels = train_data['labels']
-
+                self.vars = train_data["cond_vec"]
                 # Call forward: make a prediction & measure the average error using data = self.data
                 res = self.forward(True)
 
@@ -297,8 +302,8 @@ class AutoEncoderEngine:
                     previous_iteration_time = iteration_time
                     iteration_time = time()
 
-                    print("... Iteration %d ... Epoch %d ... Step %d/%d  ... Training Loss %1.3f ...  Time Elapsed %1.3f ... Iteration Time %1.3f" %
-                          (self.iteration, self.epoch+1, self.step, len(train_loader), res["sinkhorn_loss"], iteration_time - start_time, iteration_time - previous_iteration_time))
+                    print("... Iteration %d ... Epoch %d ... Step %d/%d  ... Training Loss %1.3f ... MSE Loss %1.3f ... NG_loss %1.3f Time Elapsed %1.3f ... Iteration Time %1.3f" %
+                          (self.iteration, self.epoch+1, self.step, len(train_loader), res["sinkhorn_loss"], res["mse_loss"], res["noise_gen_loss"], iteration_time - start_time, iteration_time - previous_iteration_time))
             
             if self.scheduler is not None:
                 self.scheduler.step()
@@ -339,7 +344,7 @@ class AutoEncoderEngine:
             # extract the event data from the input data tuple
             self.data = val_data['data']
             self.labels = val_data['labels']
-
+            self.vars = val_data["cond_vec"]
             val_res = self.forward(False)
 
             val_metrics["sinkhorn_loss"] += val_res["sinkhorn_loss"]
@@ -415,18 +420,18 @@ class AutoEncoderEngine:
                 eval_indices = eval_data['indices']
                 
                 # Run the forward procedure and output the result
-                result = self.forward(train=False)
+                result= self.forward(train=False)
                 
-                generated_noise = [self.model.generate_noise(torch.rand(1, self.model.input_size).to(self.device),result["cond_x"][idx:idx+1].to(self.device)).cpu().detach().numpy() for idx in range(np.shape(self.labels.detach().numpy())[0])]
+                #generated_noise = [self.model.generate_noise(torch.rand(1, self.model.input_size).to(self.device),result["cond_x"][idx:idx+1].to(self.device)).cpu().detach().numpy() for idx in range(np.shape(self.labels.detach().numpy())[0])]
 
                 eval_sloss += result['sinkhorn_loss']
                 evalmse_loss += result['mse_loss']
                 evalng_loss += result['noise_gen_loss']
-                
+                y = result["y"]
                 # Add the local result to the final result
                 indices.extend(eval_indices.numpy())
                 labels.extend(self.labels.numpy())
-                zs.append(generated_noise)
+                zs.append(y)
                 
                 if eval_iterations%100 == 0:
                     print("eval_iteration : " + str(it) + " eval_loss : " + str(result["sinkhorn_loss"]) + " mse_loss : " + str(result["mse_loss"]) + " noise generator loss : " + str(result["noise_gen_loss"]))
@@ -469,7 +474,7 @@ class AutoEncoderEngine:
             print("Saving Data...")
             np.save(self.dirpath + "indices.npy", indices)#sorted_indices)
             np.save(self.dirpath + "labels.npy", labels)#[sorted_indices])
-            
+            np.save(self.dirpath + "all_zs.npy", all_zs)#[decoded latent vectors]
             # Compute overall evaluation metrics
             val_iterations = np.sum(local_eval_metrics_dict["eval_iterations"])
             val_loss = np.sum(local_eval_metrics_dict["eval_sloss"])
@@ -515,10 +520,13 @@ class AutoEncoderEngine:
 
     def restore_best_state(self, placeholder):
         """Restore model using best model found in current directory."""
+        
         best_validation_path = "{}{}{}{}".format(self.dirpath,
                                      str(self.model._get_name()),
                                      "BEST",
                                      ".pth")
+        
+        #best_validation_path = "/home/amisery/WatChMaL/outputs/2023-04-21/09-01-10/outputs/AutoencoderBEST.pth"
 
         self.restore_state_from_file(best_validation_path)
     

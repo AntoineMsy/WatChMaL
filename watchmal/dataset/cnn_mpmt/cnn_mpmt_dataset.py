@@ -48,6 +48,7 @@ class CNNmPMTDataset(H5Dataset):
             i.e. provide the sum of PMT charges in each mPMT instead of providing all PMT charges.
         """
         super().__init__(h5file)
+        
         self.mpmt_positions = np.load(mpmt_positions_file)['mpmt_image_positions']
         self.data_size = np.max(self.mpmt_positions, axis=0) + 1
         self.norm_transform = tvtf.Normalize(mean=[0.5], std=[0.5])
@@ -114,7 +115,10 @@ class CNNmPMTDataset(H5Dataset):
         processed_data = du.apply_transformations(self.transforms, processed_data)
         if self.padding_type is not None:
             processed_data = self.padding_type(processed_data)
-
+        data_dict["cond_vec"] = torch.tensor(np.concatenate((data_dict["energies"], data_dict["angles"], np.squeeze(data_dict["positions"]))))
+        del data_dict["energies"]
+        del data_dict["positions"]
+        del data_dict["angles"]
         data_dict["data"] = processed_data
         
         return data_dict
@@ -123,7 +127,10 @@ class CNNmPMTDataset(H5Dataset):
         pad_val = (0,0,2,1)
         return F.pad(data,pad_val,"constant",0)
 
-     
+    def log_transform(self,data):
+        return torch.log(1+data)
+    def unlog(self, data):
+        return torch.exp(data)-1   
     def unpad(self,data):
         unpad_val = (0,0,-2,-1)
         return F.pad(data,unpad_val,"constant",0)
