@@ -26,6 +26,7 @@ import copy
 # WatChMaL imports
 from watchmal.dataset.data_utils import get_data_loader
 from watchmal.utils.logging_utils import CSVData
+from watchmal.engine.losses import SIMcLoss, LapLoss
 
 #Clustering imports
 from sklearn.decomposition import PCA
@@ -88,6 +89,9 @@ class AutoEncoderEngine:
 
         self.criterion = nn.MSELoss()
         self.loss_func = SamplesLoss("sinkhorn", blur=0.05,scaling = 0.95,diameter=0.01,debias=True)
+        
+        self.laploss = LapLoss(channels = self.model.img_channels)
+        self.simloss = SIMcLoss()
         
         self.optimizer = None
         self.scheduler = None
@@ -178,6 +182,10 @@ class AutoEncoderEngine:
             self.model.zero_grad()
             autoencoder_output, y = self.model(data)
             #print(torch.mean(autoencoder_output))
+            cosloss = self.simloss(y)
+            #cosloss = 0
+            laploss = self.laploss(autoencoder_output,data)
+                
             loss_mse = self.criterion(autoencoder_output,data) #use MSE
 
             rand_x = torch.rand(bs, self.model.input_size).to(self.device) ### Generate input noise for the noise generator
@@ -193,7 +201,7 @@ class AutoEncoderEngine:
                 print(data.size())
                 print(labels.size())
 
-            self.loss = self.noise_gen_weight*ng_loss+ self.reconstruction_weight*loss_mse
+            self.loss = self.noise_gen_weight*ng_loss+ self.reconstruction_weight*loss_mse + 10*cosloss + laploss
             
 
             result = {'decoded_img': autoencoder_output,
@@ -201,7 +209,9 @@ class AutoEncoderEngine:
                     "y" : y.cpu().detach().numpy(),
                     'sinkhorn_loss': self.loss.item(),
                     'mse_loss': loss_mse.item(),
-                    'noise_gen_loss' : ng_loss.item()}
+                    'noise_gen_loss' : ng_loss.item(),
+                    "cosloss" : cosloss.item(),
+                    "laploss" : laploss.item()}
         
             return result
     
@@ -302,8 +312,8 @@ class AutoEncoderEngine:
                     previous_iteration_time = iteration_time
                     iteration_time = time()
 
-                    print("... Iteration %d ... Epoch %d ... Step %d/%d  ... Training Loss %1.3f ... MSE Loss %1.3f ... NG_loss %1.3f Time Elapsed %1.3f ... Iteration Time %1.3f" %
-                          (self.iteration, self.epoch+1, self.step, len(train_loader), res["sinkhorn_loss"], res["mse_loss"], res["noise_gen_loss"], iteration_time - start_time, iteration_time - previous_iteration_time))
+                    print("... Iteration %d ... Epoch %d ... Step %d/%d  ... Training Loss %1.3f ... MSE Loss %1.3f ... NG_loss %1.3f ... Cosloss %1.3f ... Laploss %1.3f ... Time Elapsed %1.3f ... Iteration Time %1.3f" %
+                          (self.iteration, self.epoch+1, self.step, len(train_loader), res["sinkhorn_loss"], res["mse_loss"], res["noise_gen_loss"], res["cosloss"], res["laploss"], iteration_time - start_time, iteration_time - previous_iteration_time))
             
             if self.scheduler is not None:
                 self.scheduler.step()

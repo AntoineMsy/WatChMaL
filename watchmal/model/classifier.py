@@ -18,6 +18,9 @@ class Classifier(nn.Module):
         x = self.feature_extractor(x)
         x = self.classification_network(x)
         return x
+    def forward_embedding(self,x):
+        x = self.feature_extractor.forward_embedding(x)
+        return x
 
 
 class PassThrough(nn.Module):

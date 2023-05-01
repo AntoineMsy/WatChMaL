@@ -11,6 +11,7 @@ defaults:
     - engine: classifier
     - tasks/train: train_resnet
     - optimizers@tasks.train.optimizers: adam
+    - schedulers@tasks.train.schedulers : cosine
     - sampler@tasks.train.data_loaders.train.sampler: subset_random
     - sampler@tasks.train.data_loaders.validation.sampler: subset_random
     - tasks/restore_best_state: restore_best_state

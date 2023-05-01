@@ -48,7 +48,7 @@ class BasicDecBlock(nn.Module):
         return out
     
 class ResNetDecoder(nn.Module):
-    def __init__(self, block, layers, num_input_channels, num_output_channels, img_size_x=32, img_size_y=40, zero_init_residual=False,
+    def __init__(self, block, layers, num_input_channels, num_output_channels, img_size_x=32, img_size_y=40, zero_init_residual=True,
                 conv_pad_mode='zeros'):
         super(ResNetDecoder, self).__init__()
 
@@ -78,6 +78,8 @@ class ResNetDecoder(nn.Module):
         # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
         if zero_init_residual:
             for m in self.modules():
+                if isinstance(m, nn.ConvTranspose2d):
+                    nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='leaky_relu')
                 if isinstance(m, BasicDecBlock):
                     nn.init.constant_(m.bn2.weight, 0)
 

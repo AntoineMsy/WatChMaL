@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from watchmal.model.resnet import ResNet
 from watchmal.model.resnet_encoder import resnet18encoder
 from watchmal.model.resnet_decoder import resnet18decoder
-
+from hydra.utils import instantiate
 class Sine(nn.Module):
     def __init__(self, w0 = 1.):
         super().__init__()
@@ -171,7 +171,7 @@ class BasicDecoder(nn.Module):
         return x
 
 class Autoencoder(nn.Module):
-    def __init__(self, input_size, num_classes, img_size_x, img_size_y, in_channels, lat_dim, img_channels):
+    def __init__(self, input_size, num_classes, img_size_x, img_size_y, in_channels, lat_dim, img_channels, activation_function = None):
         super(Autoencoder, self).__init__()
         self.img_size_x = img_size_x
         self.img_size_y = img_size_y
@@ -180,7 +180,8 @@ class Autoencoder(nn.Module):
         self.img_channels = img_channels
         self.lat_dim = lat_dim
         self.num_classes = num_classes
-        
+        if activation_function != None :
+            self.activation_function = instantiate(activation_function)
         #self.resnet_encoder = ResNet(BasicBlock, [2, 2, 2, 2],self.img_channels, self.lat_dim)
         self.resnet_encoder = resnet18encoder(**{"num_input_channels": self.img_channels ,"num_output_channels": self.lat_dim})
         self.resnet_decoder = resnet18decoder(**{"num_input_channels": self.img_channels ,"num_output_channels": self.lat_dim, "img_size_x": self.img_size_x, "img_size_y" : self.img_size_y})
@@ -194,7 +195,7 @@ class Autoencoder(nn.Module):
         self.ng_fc3 = nn.Linear(self.d, self.d*3//4)
         self.ng_fc4 = nn.Linear(self.d*3//4, self.lat_dim)
 ###############
-
+        """
         for m in self.modules():
             classname = m.__class__.__name__
             if classname.find('Conv') != -1:
@@ -202,6 +203,7 @@ class Autoencoder(nn.Module):
             elif (classname.find('BatchNorm') != -1):#|(classname.find('Linear') != -1):
                 nn.init.normal_(m.weight.data, 1.0, 0.02)
                 nn.init.constant_(m.bias.data, 0)
+        """
     
     # forward method
     def forward(self, x):
@@ -218,7 +220,7 @@ class Autoencoder(nn.Module):
         
     def generate(self,x):
         #Duplicate decoder part
-        return self.decoder(x)
+        return self.resnet_decoder(x)
     
     def generate_noise(self, x, cond_x):
         #Noise generator MLP

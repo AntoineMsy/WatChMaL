@@ -1,8 +1,7 @@
 gpu_list:
-    - 0
-    - 1
+    - 5
 seed: null
-dump_path: './outputs/'
+dump_path: '/home/amisery/WatChMaL/outputs/2023-04-26/11-17-56/outputs/'
 defaults:
     - data: iwcd_short
     - data/dataset: iwcd_cnn_short

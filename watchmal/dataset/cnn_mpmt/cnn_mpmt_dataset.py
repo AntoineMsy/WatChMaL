@@ -27,7 +27,7 @@ class CNNmPMTDataset(H5Dataset):
     with mPMTs arrange in an event-display-like format.
     """
 
-    def __init__(self, h5file, mpmt_positions_file, padding_type=None, transforms=None, collapse_arrays=False):
+    def __init__(self, h5file, mpmt_positions_file, padding_type=None, transforms=None, collapse_arrays=False, systematic_transform = False):
         """
         Constructs a dataset for CNN data. Event hit data is read in from the HDF5 file and the PMT charge data is
         formatted into an event-display-like image for input to a CNN. Each pixel of the image corresponds to one mPMT
@@ -59,7 +59,9 @@ class CNNmPMTDataset(H5Dataset):
        
         self.collapse_arrays = collapse_arrays
         self.transforms = du.get_transformations(self, transforms)
-    
+        self.systematic_transform = systematic_transform
+        self.global_max = 3212.684
+        self.log_global_max = np.log(1+self.global_max)
 
         if padding_type is not None:
             self.padding_type = getattr(self, padding_type)
@@ -110,9 +112,13 @@ class CNNmPMTDataset(H5Dataset):
         data_dict = super().__getitem__(item)
         processed_data = from_numpy(self.process_data(self.event_hit_pmts, self.event_hit_charges))
         #if sae do processed_data = self.pad(self.norm_transform(processed_data))
-
-        #processed_data = du.apply_random_transformations(self.transforms, processed_data)
-        processed_data = du.apply_transformations(self.transforms, processed_data)
+        
+        if self.systematic_transform:
+            processed_data = du.apply_transformations(self.transforms, processed_data)
+        else : 
+            #processed_data = self.norm_event(processed_data)
+            processed_data = du.apply_random_transformations(self.transforms, processed_data)
+       
         if self.padding_type is not None:
             processed_data = self.padding_type(processed_data)
         data_dict["cond_vec"] = torch.tensor(np.concatenate((data_dict["energies"], data_dict["angles"], np.squeeze(data_dict["positions"]))))
@@ -122,11 +128,18 @@ class CNNmPMTDataset(H5Dataset):
         data_dict["data"] = processed_data
         
         return data_dict
-
+    
+    def log_scaling(self,data):
+        return self.log_transform(data)/self.log_global_max
     def pad(self, data):
         pad_val = (0,0,2,1)
         return F.pad(data,pad_val,"constant",0)
-
+    def norm_global(self,data):
+        #divide by global max over the dataset
+        return data/self.global_max
+    def norm_event(self,data):
+        #divide by data's maximum value
+        return data/(torch.max(data).item())
     def log_transform(self,data):
         return torch.log(1+data)
     def unlog(self, data):

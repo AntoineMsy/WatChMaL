@@ -132,7 +132,7 @@ class CNNmPMTEventDisplay(CNNmPMTDataset):
                 Color map to use when plotting the data
             color_norm : matplotlib.colors.Normalize, optional
                 Normalization to apply to color scale, by default uses log scaling
-            show_zero : bool, default: false
+            show_zero : bool, default: fagitlse
                 If false, zero data is drawn as the background color
 
         Returns
@@ -184,9 +184,11 @@ class CNNmPMTEventDisplay(CNNmPMTDataset):
         if log:
             data = self.log_transform(data)
         label = self[event]["labels"]
+        cond_vec = self[event]["cond_vec"]
         y_onehot = torch.FloatTensor(1, model.num_classes)
         y_onehot.zero_()
         cond_s = y_onehot.scatter_(1, torch.tensor([[label]]), 1)
+        cond_s = torch.concat((cond_s,cond_vec[None,:]),dim=1)
         generated_noise = model.generate_noise(torch.rand(1, model.input_size),cond_s[0:1])
         example = model.generate(generated_noise)
         out = self.unlog(self.unpad(example.squeeze(0))).detach().numpy()

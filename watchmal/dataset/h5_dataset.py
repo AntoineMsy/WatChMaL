@@ -157,7 +157,7 @@ class H5Dataset(H5CommonDataset, ABC):
         self.hit_charge = np.memmap(self.h5_path, mode="r", shape=self.hdf5_hit_charge.shape,
                                     offset=self.hdf5_hit_charge.id.get_offset(),
                                     dtype=self.hdf5_hit_charge.dtype)
-        
+       
     def __getitem__(self, item):
         data_dict = super().__getitem__(item)
 

@@ -85,7 +85,7 @@ class Bottleneck(nn.Module):
 
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, num_input_channels, num_output_channels, zero_init_residual=False,
+    def __init__(self, block, layers, num_input_channels, num_output_channels, zero_init_residual=True,
                  conv_pad_mode='zeros'):
 
         super(ResNet, self).__init__()
@@ -107,7 +107,7 @@ class ResNet(nn.Module):
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='leaky_relu')
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
