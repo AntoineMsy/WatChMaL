@@ -1,0 +1,27 @@
+epochs: 60
+generation_step: 4
+report_interval: 20000
+val_interval: 20000
+num_val_batches: 400
+
+kl_coeff: 0.1
+cov_scaling: 5.0
+log_tsne: True
+margin_max_distance: 32
+sample_count: 40
+
+checkpointing: False
+
+data_loaders:
+  train:
+    split_key: train_idxs
+    batch_size: 64
+    num_workers: 2
+    transforms:
+      - horizontal_flip
+      - vertical_flip
+      - front_back_reflection
+  validation:
+    split_key: val_idxs
+    batch_size: 64
+    num_workers: 2
