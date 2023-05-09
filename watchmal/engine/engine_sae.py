@@ -26,7 +26,7 @@ import copy
 # WatChMaL imports
 from watchmal.dataset.data_utils import get_data_loader
 from watchmal.utils.logging_utils import CSVData
-from watchmal.engine.losses import SIMcLoss, LapLoss
+from WatChMaL.watchmal.engine.losses.sinkhorn_add_losses import SIMcLoss, LapLoss
 
 #Clustering imports
 from sklearn.decomposition import PCA

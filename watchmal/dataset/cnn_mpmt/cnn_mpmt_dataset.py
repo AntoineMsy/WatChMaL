@@ -118,6 +118,8 @@ class CNNmPMTDataset(H5Dataset):
         else : 
             #processed_data = self.norm_event(processed_data)
             processed_data = du.apply_random_transformations(self.transforms, processed_data)
+        
+        processed_data = self.log_transform(processed_data)
        
         if self.padding_type is not None:
             processed_data = self.padding_type(processed_data)

@@ -1,9 +1,9 @@
-epochs: 20
+epochs: 60
 
-report_interval: 100
-val_interval: 100
+report_interval: 500
+val_interval: 500
 num_val_batches: 32
-reconstruction_weight : 10
+reconstruction_weight : 25
 noise_gen_weight : 6
 
 checkpointing: False
@@ -14,6 +14,7 @@ data_loaders:
     num_workers: 2
     transforms: 
       - pad
+
      
       
   validation:
@@ -22,6 +23,7 @@ data_loaders:
     num_workers: 2
     transforms:
       - pad
+
     
 
   
