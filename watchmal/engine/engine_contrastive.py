@@ -503,7 +503,7 @@ class VMBDLSEngine:
                     self.num_dist_update +=1
                     if self.epoch == 0:
                         for g in self.optimizer.param_groups:
-                            g['lr'] = self.lr
+                            g['lr'] = 0.01
                     
 
                 # print the metrics at given intervals

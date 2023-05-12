@@ -1,0 +1,6 @@
+_target_: watchmal.model.contrastive_resnet.vmdls_classif.VMDLS_Classifier
+class_num : 4
+enc_type: "resnet18"
+latent_dim : 32
+channels : 19
+model_file_path : "/home/amisery/WatChMaL/outputs/2023-05-10/22-07-40/outputs/GMM_VAE_Contrastive_epoch_1.pth"
