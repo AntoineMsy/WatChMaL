@@ -158,7 +158,6 @@ class VMBDLSEngine:
         
         self.optimizer.zero_grad()
         x = self.data.to(self.device)
-        
         y = self.labels.to(self.device)
         cur_classes = torch.unique(y).long()
     
@@ -187,7 +186,7 @@ class VMBDLSEngine:
             # p = torch.distributions.Normal(self.class_means[i,:].repeat(y_count,1), torch.ones_like(rel_zs)*(0.1 if i < self.class_num else 1))
             # kl_loss = torch.distributions.kl.kl_divergence(q,p).mean()*self.kl_coeff
             # kl += kl_loss / len(cur_classes)
-            if self.num_dist_update > 0:
+            if self.num_dist_update >= self.generation_step:
                 class_ll = self.class_gaussian[i].log_prob(rel_zs).detach()
                 self.precentiles[i].append(class_ll)
     
@@ -443,22 +442,29 @@ class VMBDLSEngine:
 
         # set model to training mode
         self.model.train()
-
+        self.scheduler = torch.optim.lr_scheduler.StepLR(optimizer = self.optimizer,gamma = 0.92, step_size = 1)
+        print(self.scheduler.get_last_lr())
         self.initialize_gaussians()
         # initialize epoch and iteration counters
         self.epoch = 0.
         self.iteration = 0
         self.step = 0
         # keep track of the validation loss
-        self.best_validation_loss = 1.0e10
 
+        #learning rate warmup
+        self.best_validation_loss = 1.0e10
+        self.warmup_updates = 0
+        self.target_lr = 0.001
+        self.warmup_steps = 10000
+        self.initial_lr = 0.00001
+        self.lr_step = self.target_lr-self.initial_lr/self.warmup_steps
         # initialize the iterator over the validation set
         val_iter = iter(self.data_loaders["validation"])
         # global training loop for multiple epochs
         for self.epoch in range(epochs):
             if self.epoch == 0:
                 for g in self.optimizer.param_groups:
-                    g['lr'] = 0.001
+                    g['lr'] = 0.00001
             if self.rank == 0:
                 print('Epoch', self.epoch+1, 'Starting @', strftime("%Y-%m-%d %H:%M:%S", localtime()))
             
@@ -495,15 +501,24 @@ class VMBDLSEngine:
                 self.train_log.record(train_metrics)
                 self.train_log.write()
                 self.train_log.flush()
-
+                
+                if self.warmup_updates < self.warmup_steps:
+                    self.warmup_updates+=1
+                    for g in self.optimizer.param_groups:
+                        g['lr'] += self.lr_step
+                elif self.warmup_steps == self.warmup_steps:
+                    self.warmup_updates+=1
+                    for g in self.optimizer.param_groups:
+                        g['lr'] += self.target_lr
                 # run validation on given intervals
                 if self.iteration % val_interval == 0:
-                    #self.validate(val_iter, num_val_batches, checkpointing)
+                    self.validate(val_iter, num_val_batches, checkpointing)
                     self.training_epoch_end()
                     self.num_dist_update +=1
-                    if self.epoch == 0:
-                        for g in self.optimizer.param_groups:
-                            g['lr'] = 0.01
+
+                    # if self.epoch == 0:
+                    #     for g in self.optimizer.param_groups:
+                    #         g['lr'] = 0.01
                     
 
                 # print the metrics at given intervals
@@ -511,8 +526,8 @@ class VMBDLSEngine:
                     previous_iteration_time = iteration_time
                     iteration_time = time()
 
-                    print("... Iteration %d ... Epoch %d ... Step %d/%d  ... Training Loss %1.3f ... Metric Loss %1.3f ... KL_loss %1.3f ... Learning rate %1.9f ...  Time Elapsed %1.3f ... Iteration Time %1.3f" %
-                          (self.iteration, self.epoch+1, self.step, len(train_loader), res["loss"], res["metric_loss"], res["kl_loss"], self.optimizer.param_groups[0]['lr'], iteration_time - start_time, iteration_time - previous_iteration_time))
+                    print("... Iteration %d ... Epoch %d ... Step %d/%d  ... Training Loss %1.3f ... Metric Loss %1.3f ... KL_loss %1.3f ... Learning rate %1.7f ...  Time Elapsed %1.3f ... Iteration Time %1.3f" %
+                          (self.iteration, self.epoch+1, self.step, len(train_loader), res["loss"], res["metric_loss"], res["kl_loss"], self.scheduler.get_last_lr()[0], iteration_time - start_time, iteration_time - previous_iteration_time))
              
             
             self.test(val_iter, num_val_batches)

@@ -22,7 +22,7 @@ class VMDLS_Classifier(nn.Module):
             self.layer_size += 1120
         elif self.feature_extractor.enc_type == "resnet50":
             self.layer_size += 1792
-
+        self.layer_size = 32
         num_inputs = self.layer_size
         self.cl_fc1 = nn.Linear(num_inputs, int(num_inputs // 2))
         self.cl_fc2 = nn.Linear(int(num_inputs // 2), int(num_inputs // 4))
@@ -35,8 +35,9 @@ class VMDLS_Classifier(nn.Module):
         with torch.no_grad():
             mu= self.feature_extractor.fc_mu(self.feature_extractor.encoder(x))
             z = mu
-            l_features = [torch.flatten(self.feature_extractor.encoder.get_layer_output(x,i),1) for i in range(1,5)] + [mu]
-            l_features = torch.hstack(l_features)
+            # l_features = [torch.flatten(self.feature_extractor.encoder.get_layer_output(x,i),1) for i in range(1,5)] + [mu]
+            # l_features = torch.hstack(l_features)
+            l_features = mu
         out = self.classifier(l_features)
         return out
 

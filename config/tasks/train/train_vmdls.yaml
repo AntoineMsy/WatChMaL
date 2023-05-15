@@ -1,8 +1,8 @@
 epochs: 60
 generation_step: 4
-report_interval: 20000
-val_interval: 20000
-num_val_batches: 400
+report_interval: 5000
+val_interval: 5000
+num_val_batches: 200
 
 kl_coeff: 0.1
 cov_scaling: 5.0
@@ -15,7 +15,7 @@ checkpointing: False
 data_loaders:
   train:
     split_key: train_idxs
-    batch_size: 64
+    batch_size: 256
     num_workers: 2
     transforms:
       - horizontal_flip
@@ -23,5 +23,5 @@ data_loaders:
       - front_back_reflection
   validation:
     split_key: val_idxs
-    batch_size: 64
+    batch_size: 256
     num_workers: 2

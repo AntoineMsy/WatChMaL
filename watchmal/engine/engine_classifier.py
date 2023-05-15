@@ -192,7 +192,7 @@ class ClassifierEngine:
         num_val_batches     = train_config.num_val_batches
         checkpointing       = train_config.checkpointing
         save_interval = train_config.save_interval if 'save_interval' in train_config else None
-        self.extract_embedding = train_config.extract_embedding
+        
         # set the iterations at which to dump the events and their metrics
         if self.rank == 0:
             print(f"Training... Validation Interval: {val_interval}")
@@ -361,7 +361,7 @@ class ClassifierEngine:
             self.model.eval()
             
             # Variables for the confusion matrix
-            loss, accuracy, indices, labels, predictions, softmaxes, zs= [],[],[],[],[],[],[]
+            loss, accuracy, indices, labels, predictions, softmaxes =  [],[],[],[],[],[]
             
             # Extract the event data and label from the DataLoader iterator
             for it, eval_data in enumerate(self.data_loaders["test"]):
@@ -374,9 +374,6 @@ class ClassifierEngine:
                 
                 # Run the forward procedure and output the result
                 result = self.forward(train=False)
-                
-                lat_vec = self.model.forward_embedding(self.data.to(self.device))
-                zs.append(lat_vec.detach().cpu().numpy())
             
                 eval_loss += result['loss']
                 eval_acc  += result['accuracy']
@@ -386,12 +383,11 @@ class ClassifierEngine:
                 labels.extend(self.labels.numpy())
                 predictions.extend(result['predicted_labels'].detach().cpu().numpy())
                 softmaxes.extend(result["softmax"].detach().cpu().numpy())
-                
-                print("eval_iteration : " + str(it) + " eval_loss : " + str(result["loss"]) + " eval_accuracy : " + str(result["accuracy"]))
+                if eval_iterations % 1000 ==0:
+                    print("eval_iteration : " + str(it) + " eval_loss : " + str(result["loss"]) + " eval_accuracy : " + str(result["accuracy"]))
             
                 eval_iterations += 1
-                if eval_iterations > 1000:
-                    break
+                
         
         # convert arrays to torch tensors
         print("loss : " + str(eval_loss/eval_iterations) + " accuracy : " + str(eval_acc/eval_iterations))
@@ -406,9 +402,9 @@ class ClassifierEngine:
         labels      = np.array(labels)
         predictions = np.array(predictions)
         softmaxes   = np.array(softmaxes)
-        zs = np.array(zs)
+        
 
-        local_eval_results_dict = {"indices":indices, "labels":labels, "predictions":predictions, "softmaxes":softmaxes, "zs": zs}
+        local_eval_results_dict = {"indices":indices, "labels":labels, "predictions":predictions, "softmaxes":softmaxes}
 
         if self.is_distributed:
             # Gather results from all processes
@@ -423,7 +419,7 @@ class ClassifierEngine:
                 labels      = np.array(global_eval_results_dict["labels"].cpu())
                 predictions = np.array(global_eval_results_dict["predictions"].cpu())
                 softmaxes   = np.array(global_eval_results_dict["softmaxes"].cpu())
-                zs = np.array(global_eval_results_dict["zs"].cpu())
+                
         if self.rank == 0:
 #            print("Sorting Outputs...")
 #            sorted_indices = np.argsort(indices)
@@ -434,7 +430,7 @@ class ClassifierEngine:
             np.save(self.dirpath + "labels.npy", labels)#[sorted_indices])
             np.save(self.dirpath + "predictions.npy", predictions)#[sorted_indices])
             np.save(self.dirpath + "softmax.npy", softmaxes)#[sorted_indices])
-            np.save(self.dirpath + "zs.npy", zs)#[embedding vectors])
+            
          
             # Compute overall evaluation metrics
             val_iterations = np.sum(local_eval_metrics_dict["eval_iterations"])

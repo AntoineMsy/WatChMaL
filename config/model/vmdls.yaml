@@ -1,5 +1,5 @@
 _target_: watchmal.model.contrastive_resnet.gmm_vae.GMM_VAE_Contrastive
 class_num : 4
-enc_type: "resnet18"
+enc_type: "resnet50"
 latent_dim : 32
 channels : 19

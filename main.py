@@ -125,6 +125,7 @@ def main_worker_function(rank, ngpus_per_node, is_distributed, config):
     # Configure scheduler
     for task, task_config in config.tasks.items():
         if 'scheduler' in task_config:
+            print('configuring scheduler')
             engine.configure_scheduler(task_config.scheduler)
     
     # Perform tasks

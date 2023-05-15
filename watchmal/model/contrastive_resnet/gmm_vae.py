@@ -89,16 +89,11 @@ class GMM_VAE_Contrastive(nn.Module):
         return z, mu, log_var, q
 
     def sample(self, mu, log_var):
-        try :
-            std = torch.exp(log_var / 2)
-            p = torch.distributions.Normal(torch.zeros_like(mu), torch.ones_like(std))
-            q = torch.distributions.Normal(mu, std)
-            z = q.rsample()
-        except:
-            print(torch.min(std))
-            std = torch.ones_like(std)
-            p = torch.distributions.Normal(torch.zeros_like(mu), torch.ones_like(std))
-            q = torch.distributions.Normal(mu, std)
-            z = q.rsample()
+        
+        std = torch.exp(log_var / 2)
+        p = torch.distributions.Normal(torch.zeros_like(mu), torch.ones_like(std))
+        q = torch.distributions.Normal(mu, std)
+        z = q.rsample()
+        
         
         return p, q, z

@@ -3,4 +3,4 @@ class_num : 4
 enc_type: "resnet18"
 latent_dim : 32
 channels : 19
-model_file_path : "/home/amisery/WatChMaL/outputs/2023-05-10/22-07-40/outputs/GMM_VAE_Contrastive_epoch_1.pth"
+model_file_path : "/home/Antoine.m/WatChMaL/outputs/2023-05-13/04-53-26/outputs/GMM_VAE_ContrastiveBEST.pth"
