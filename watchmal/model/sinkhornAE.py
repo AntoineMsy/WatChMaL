@@ -220,8 +220,8 @@ class Autoencoder(nn.Module):
         
     def generate(self,x):
         #Duplicate decoder part
-        return self.resnet_decoder(x)
-    
+        return self.resnet_decoder(x)  
+     
     def generate_noise(self, x, cond_x):
         #Noise generator MLP
         x = F.leaky_relu(self.ng_fc1(x), 0.2)

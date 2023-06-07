@@ -23,6 +23,7 @@ import sys
 from sys import stdout
 import copy
 import matplotlib.pyplot as plt
+#import umap.umap_ as umap
 
 # WatChMaL imports
 from watchmal.dataset.data_utils import get_data_loader
@@ -62,7 +63,7 @@ class VMBDLSEngine:
         self.rank = rank
         self.model = model
         self.device = torch.device(gpu)
-
+        self.class_num = 4
         self.lower_bound = 0.05
 
         # Setup the parameters to save given the model type
@@ -89,10 +90,10 @@ class VMBDLSEngine:
         if self.rank == 0:
             self.val_log = CSVData(self.dirpath + "log_val.csv")
 
-       
+        self.eval_log = CSVData(self.dirpath + "log_eval.csv")
         self.optimizer = None
         self.scheduler = None
-
+        self.initialize_gaussians()
         #self.device = "cuda"
         #self.model = model.to(self.device)
         
@@ -160,7 +161,7 @@ class VMBDLSEngine:
         x = self.data.to(self.device)
         y = self.labels.to(self.device)
         cur_classes = torch.unique(y).long()
-    
+
         z ,mu,log_var, q = self.model._run_step(x)
     
         kl = 0
@@ -197,15 +198,47 @@ class VMBDLSEngine:
         contrastive_loss = self.metric_loss(z,y)
         self.loss = contrastive_loss + kl
 
-        self.loss.backward()        # compute new gradient
+        self.loss.backward()  
+        # max_grad = 0
+        # torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm = 100.0, norm_type=2)      # compute new gradient
+        
+        # for param in self.model.parameters():
+            
+        #     grad = torch.norm(param.grad).item()
+        #     if grad > max_grad:
+        #         max_grad = grad
+           
+
         self.optimizer.step() 
         logs = {
             "loss": self.loss.item(),
             "kl_loss": kl.item(),
             "metric_loss": contrastive_loss.item(),
+            
         }
         return logs
 
+    def val_step(self):
+        with torch.no_grad():
+            x = self.data.to(self.device)
+            y = self.labels.to(self.device)
+            cur_classes = torch.unique(y).long()
+
+            z = self.model(x)
+        
+            kl = torch.tensor(0)
+
+            #triplets = self.miner(z,y)
+            contrastive_loss = self.metric_loss(z,y)
+            self.loss = contrastive_loss + kl
+
+            logs = {
+                "loss": self.loss.item(),
+                "kl_loss": kl.item(),
+                "metric_loss": contrastive_loss.item(),
+            }
+            return logs
+    
     def training_epoch_end(self):
         class_gaussians = []
         bad_classes = 0
@@ -291,12 +324,13 @@ class VMBDLSEngine:
         all_labels = torch.hstack([x[1] for x in outputs]).cpu().numpy()
         all_known_data = all_data[all_labels < self.class_num,...]
         all_known_labels = all_labels[all_labels < self.class_num]
-        all_early_features = torch.vstack([x[3] for x in outputs]).cpu().numpy()
+        #all_early_features = torch.vstack([x[3] for x in outputs]).cpu().numpy()
 
-        all_data = all_early_features
+        
         all_known_data = all_data[all_labels < self.class_num,...]
 
         if self.log_tsne:
+            #umapT = umap.UMAP(n_neighbors=15, min_dist=0.1, metric='euclidean')
             x_te_proj_pca = TSNE(n_components=2, perplexity=30, learning_rate=200).fit_transform(all_known_data)
             x_te_proj_df = pd.DataFrame(x_te_proj_pca[:, :2], columns=['Proj1', 'Proj2'])
             x_te_proj_df['label'] = all_known_labels
@@ -337,6 +371,9 @@ class VMBDLSEngine:
         eval_df = pd.DataFrame(all_known_data, columns = data_coords)
         eval_df["labels"] = all_labels
 
+        #temporary return to bypass tsne for speed issues
+        return
+    
         #2D TSNE
         x_te_proj_pca = TSNE(n_components=2, perplexity=30, learning_rate=200).fit_transform(all_known_data)
         x_te_proj_df_2d = pd.DataFrame(x_te_proj_pca[:, :2], columns=['proj2d_1', 'proj2d_2'])
@@ -444,7 +481,7 @@ class VMBDLSEngine:
         self.model.train()
         self.scheduler = torch.optim.lr_scheduler.StepLR(optimizer = self.optimizer,gamma = 0.92, step_size = 1)
         print(self.scheduler.get_last_lr())
-        self.initialize_gaussians()
+        
         # initialize epoch and iteration counters
         self.epoch = 0.
         self.iteration = 0
@@ -455,9 +492,9 @@ class VMBDLSEngine:
         self.best_validation_loss = 1.0e10
         self.warmup_updates = 0
         self.target_lr = 0.001
-        self.warmup_steps = 10000
+        self.warmup_steps = 1000
         self.initial_lr = 0.00001
-        self.lr_step = self.target_lr-self.initial_lr/self.warmup_steps
+        self.lr_step = (self.target_lr-self.initial_lr)/self.warmup_steps
         # initialize the iterator over the validation set
         val_iter = iter(self.data_loaders["validation"])
         # global training loop for multiple epochs
@@ -496,20 +533,25 @@ class VMBDLSEngine:
                 
                 # get relevant attributes of result for logging
                 train_metrics = {"iteration": self.iteration, "epoch": self.epoch, "loss": res["loss"]}
+                if self.warmup_updates < self.warmup_steps:
+                    self.warmup_updates+=1
+                    for g in self.optimizer.param_groups:
+                        g['lr'] += self.lr_step
+                        train_metrics["lr"] = g["lr"]
+                elif self.warmup_steps == self.warmup_steps:
+                    self.warmup_updates+=1
+
+                    for g in self.optimizer.param_groups:
+                        g['lr'] = self.target_lr
                 
+                for g in self.optimizer.param_groups:
+                        train_metrics["lr"] = g["lr"]
+                            
                 # record the metrics for the mini-batch in the log
                 self.train_log.record(train_metrics)
                 self.train_log.write()
                 self.train_log.flush()
                 
-                if self.warmup_updates < self.warmup_steps:
-                    self.warmup_updates+=1
-                    for g in self.optimizer.param_groups:
-                        g['lr'] += self.lr_step
-                elif self.warmup_steps == self.warmup_steps:
-                    self.warmup_updates+=1
-                    for g in self.optimizer.param_groups:
-                        g['lr'] += self.target_lr
                 # run validation on given intervals
                 if self.iteration % val_interval == 0:
                     self.validate(val_iter, num_val_batches, checkpointing)
@@ -520,7 +562,6 @@ class VMBDLSEngine:
                     #     for g in self.optimizer.param_groups:
                     #         g['lr'] = 0.01
                     
-
                 # print the metrics at given intervals
                 if self.rank == 0 and self.iteration % report_interval == 0:
                     previous_iteration_time = iteration_time
@@ -571,7 +612,7 @@ class VMBDLSEngine:
             # extract the event data from the input data tuple
             self.data = val_data['data']
             self.labels = val_data['labels']
-            val_res = self.train_step()
+            val_res = self.val_step()
 
             val_metrics["loss"] += val_res["loss"]
             val_metrics["metric_loss"] += val_res["metric_loss"]
@@ -644,19 +685,30 @@ class VMBDLSEngine:
                 eval_indices = eval_data['indices']
                 
                 # Run the forward procedure and output the result
-                out = self.test_step(train=False)
+                out = self.test_step()
+                out_bis = []
+                for t in out:
+                    out_bis.append(t.detach().cpu())
                 
-                eval_outputs.append(list(out))
-        
-                # eval_loss += result['loss']
-                # evalmetric_loss += result['metric_loss']
-                # evalkl_loss += result['kl_loss']
-                
-                # Add the local result to the final result
-                indices.extend(eval_indices.numpy())
-                labels.extend(self.labels.numpy())
-                
+                for j in range(len(self.labels)):
+                    eval_metrics = {"z_"+str(i) : out_bis[0][j][i] for i in range(self.model.latent_dim)}
+                    # eval_loss += result['loss']
+                    # evalmetric_loss += result['metric_loss']
+                    # evalkl_loss += result['kl_loss']
+                    
+                    # Add the local result to the final result
+                    # indices.extend(eval_indices.numpy())
+                    # labels.extend(self.labels.numpy())
+                    eval_metrics["indices"] = eval_indices[j].numpy()
+                    eval_metrics["labels"] = self.labels[j].numpy()
+                    self.eval_log.record(eval_metrics)
+                    self.eval_log.write()
+                    self.eval_log.flush()
                 eval_iterations += 1
+                if eval_iterations%1000 == 0:
+                    print(eval_iterations/len(self.data_loaders["test"]))
+                if eval_iterations >= 10000:
+                    break
 
             eval_df = self.eval_epoch_end(eval_outputs)  
             eval_df = eval_df.insert('indices', indices)

@@ -1,4 +1,5 @@
 _target_: watchmal.dataset.cnn_mpmt.cnn_mpmt_dataset.CNNmPMTDataset
 mpmt_positions_file: /home/pdeperio/machine_learning/data/IWCDshort_mPMT_image_positions.npz
 collapse_arrays: False
+mode : ["charge", "time"]
 padding_type : double_cover

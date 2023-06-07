@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from watchmal.engine.losses.modded_triplets import TripletMarginLossModded
-
+import torch.nn.functional as F
 from sklearn.metrics import f1_score,auc
 
 #from models.decoders_encoders import *
@@ -36,6 +36,7 @@ class GMM_VAE_Contrastive(nn.Module):
         latent_dim: int = 32,
         channels: int=1,
         class_num: int = 10,
+        use_sinkhorn = False,
         **kwargs
     ):
 
@@ -44,8 +45,9 @@ class GMM_VAE_Contrastive(nn.Module):
         self.enc_out_dim = enc_out_dim
         self.latent_dim = latent_dim
         self.class_num = class_num
-      
-
+        self.input_size = 128
+        self.d = 1024
+        self.use_sinkhorn = use_sinkhorn
         valid_encoders = {
             'resnet18': {'enc': resnet18_encoder, 'dec': resnet18_decoder},
             'resnet50': {'enc': resnet50_encoder, 'dec': resnet50_decoder},
@@ -58,25 +60,40 @@ class GMM_VAE_Contrastive(nn.Module):
             
         if enc_type not in valid_encoders:
             self.encoder = resnet18_encoder(first_conv, maxpool1,channels)
-       
+        
         else:
             self.encoder = valid_encoders[enc_type]['enc'](first_conv, maxpool1,channels)
         
 
+        self.fc_out = nn.Linear(self.enc_out_dim, self.latent_dim)
+        
         self.fc_mu = nn.Linear(self.enc_out_dim, self.latent_dim)
         self.fc_var = nn.Linear(self.enc_out_dim, self.latent_dim)
-        self.metric_loss = TripletMarginLossModded(margin=0.1,neg_margin=0.15)
-     
+
+      
+        
         self.enc_type = enc_type
+
+        ############        noise_gen
+        self.ng_fc1 = nn.Linear(self.input_size, self.d//2)
+        self.ng_input_2 = nn.Linear(self.class_num+6,self.d//4)
+        self.ng_fc2 = nn.Linear(self.d*3//4, self.d)
+        self.ng_fc3 = nn.Linear(self.d, self.d*3//4)
+        self.ng_fc4 = nn.Linear(self.d*3//4, self.latent_dim)
+        ###############
 
 
     def forward(self, x):
         x = self.encoder(x)
         # return x
-        mu = self.fc_mu(x)
-        log_var = self.fc_var(x)
-        p, q, z = self.sample(mu, log_var)
-        return z
+        if self.use_sinkhorn :
+            z = self.fc_out(x)
+            return z
+        else :
+            mu = self.fc_mu(x)
+            log_var = self.fc_var(x)
+            p, q, z = self.sample(mu, log_var)
+            return z
 
     def _run_step(self, x):
         x = self.encoder(x)
@@ -89,11 +106,20 @@ class GMM_VAE_Contrastive(nn.Module):
         return z, mu, log_var, q
 
     def sample(self, mu, log_var):
-        
-        std = torch.exp(log_var / 2)
+        std_0 = torch.exp(log_var / 2)
+        std = std_0 + 2.2250738585072014e-64
         p = torch.distributions.Normal(torch.zeros_like(mu), torch.ones_like(std))
         q = torch.distributions.Normal(mu, std)
         z = q.rsample()
         
-        
         return p, q, z
+
+    def generate_noise(self, x, cond_x):
+        #Noise generator MLP
+        x = F.leaky_relu(self.ng_fc1(x), 0.2)
+        x2 = F.leaky_relu(self.ng_input_2(cond_x), 0.2)
+        x_concat = torch.cat((x,x2),1)
+        x = F.leaky_relu(self.ng_fc2(x_concat), 0.2)
+        x = F.leaky_relu(self.ng_fc3(x), 0.2)
+        x = self.ng_fc4(x)
+        return x

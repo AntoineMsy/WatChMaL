@@ -162,19 +162,22 @@ class ClassifierEngine:
                       'softmax': softmax,
                       'raw_pred_labels': model_out}
 
-            self.loss = self.criterion(model_out, labels)
+            self.loss = self.criterion(model_out, labels)/self.accum_iter
+            if train :
+                self.loss.backward()        # compute new gradient
             accuracy = (predicted_labels == labels).sum().item() / float(predicted_labels.nelement())
 
             result['loss'] = self.loss.item()
             result['accuracy'] = accuracy
-        
+            result["len"] = data.size()[2]
+            if ((self.step+1)%self.accum_iter ==0) or (self.step+1 == len(self.train_loader)):
+                self.optimizer.step()       # step params
+                self.optimizer.zero_grad(set_to_none = True)  # reset accumulated gradient
         return result
     
     def backward(self):
         """Backward pass using the loss computed for a mini-batch"""
-        self.optimizer.zero_grad()  # reset accumulated gradient
-        self.loss.backward()        # compute new gradient
-        self.optimizer.step()       # step params
+        
 
     def train(self, train_config):
         """
@@ -204,6 +207,7 @@ class ClassifierEngine:
         self.epoch = 0.
         self.iteration = 0
         self.step = 0
+        self.accum_iter = 8
         # keep track of the validation loss
         self.best_validation_loss = 1.0e10
 
@@ -220,14 +224,14 @@ class ClassifierEngine:
             start_time = time()
             iteration_time = start_time
 
-            train_loader = self.data_loaders["train"]
+            self.train_loader = self.data_loaders["train"]
             self.step = 0
             # update seeding for distributed samplers
             if self.is_distributed:
-                train_loader.sampler.set_epoch(self.epoch)
+                self.train_loader.sampler.set_epoch(self.epoch)
 
             # local training loop for batches in a single epoch 
-            for self.step, train_data in enumerate(train_loader):
+            for self.step, train_data in enumerate(self.train_loader):
                 
                 # run validation on given intervals
                 if self.iteration % val_interval == 0:
@@ -249,20 +253,22 @@ class ClassifierEngine:
                 self.iteration += 1
                 
                 # get relevant attributes of result for logging
-                train_metrics = {"iteration": self.iteration, "epoch": self.epoch, "loss": res["loss"], "accuracy": res["accuracy"]}
+                train_metrics = {"iteration": self.iteration, "epoch": self.epoch, "loss": res["loss"], "accuracy": res["accuracy"], "len_batch": res["len"]}
                 
+
                 # record the metrics for the mini-batch in the log
-                self.train_log.record(train_metrics)
-                self.train_log.write()
-                self.train_log.flush()
-                
+                if self.iteration%100 == 0:
+                    self.train_log.record(train_metrics)
+                    self.train_log.write()
+                    self.train_log.flush()
+                    
                 # print the metrics at given intervals
                 if self.rank == 0 and self.iteration % report_interval == 0:
                     previous_iteration_time = iteration_time
                     iteration_time = time()
 
                     print("... Iteration %d ... Epoch %d ... Step %d/%d  ... Training Loss %1.3f ... Training Accuracy %1.3f ... Time Elapsed %1.3f ... Iteration Time %1.3f" %
-                          (self.iteration, self.epoch+1, self.step, len(train_loader), res["loss"], res["accuracy"], iteration_time - start_time, iteration_time - previous_iteration_time))
+                          (self.iteration, self.epoch+1, self.step, len(self.train_loader), res["loss"], res["accuracy"], iteration_time - start_time, iteration_time - previous_iteration_time))
             
             if self.scheduler is not None:
                 self.scheduler.step()

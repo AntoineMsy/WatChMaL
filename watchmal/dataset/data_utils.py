@@ -8,18 +8,19 @@ from hydra.utils import instantiate
 # torch imports
 import torch
 from torch.utils.data import DataLoader
+from torch.utils.data import RandomSampler
 # generic imports
 import numpy as np
 import random
 
 # WatChMaL imports
 from watchmal.dataset.samplers import DistributedSamplerWrapper
-
+from watchmal.dataset.samplers import LenMatchBatchSampler
 # pyg imports
-from torch_geometric.loader import DataLoader as PyGDataLoader
+#from torch_geometric.loader import DataLoader as PyGDataLoader
 
 
-def get_data_loader(dataset, batch_size, sampler, num_workers, is_distributed, seed, is_graph=False, split_path=None, split_key=None, transforms=None):
+def get_data_loader(dataset, batch_size, sampler, num_workers, is_distributed, seed, is_batch = False, is_graph=False, split_path=None, split_key=None, transforms=None):
     """
     Creates a dataloader given the dataset and sampler configs. The dataset and sampler are instantiated using their
     corresponding configs. If using DistributedDataParallel, the sampler is wrapped using DistributedSamplerWrapper.
@@ -71,8 +72,12 @@ def get_data_loader(dataset, batch_size, sampler, num_workers, is_distributed, s
 
     if is_graph:
         return PyGDataLoader(dataset, sampler=sampler, batch_size=batch_size, num_workers=num_workers)
-    else:
+    elif is_batch:
+        sampler = RandomSampler(data_source=  dataset)
+        lenmatch_sampler = LenMatchBatchSampler(sampler = sampler, batch_size= batch_size, drop_last=False)
         # TODO: added drop_last, should decide if we want to keep this
+        return DataLoader(dataset, batch_sampler=lenmatch_sampler, num_workers=num_workers, persistent_workers=True, pin_memory=True)
+    else :
         return DataLoader(dataset, sampler=sampler, batch_size=batch_size, num_workers=num_workers, drop_last=False, persistent_workers=True, pin_memory=True)
 
 
@@ -106,7 +111,7 @@ def apply_transformations(transforms, data, segmented_labels=None):
                 segmented_labels = transformation(segmented_labels)
     return data
 
-def apply_random_transformations(transforms, data, segmented_labels=None):
+def apply_random_transformations(transforms, data, segmented_labels=None, choices = None):
     """
     Randomly chooses a set of transformations to apply, from a given list of transformations, then applies those that
     were randomly chosen to the data and returns the transformed data.
@@ -126,9 +131,17 @@ def apply_random_transformations(transforms, data, segmented_labels=None):
         The transformed data.
     """
     if transforms is not None:
-        for transformation in transforms:
-            if random.getrandbits(1):
-                data = transformation(data)
-                if segmented_labels is not None:
-                    segmented_labels = transformation(segmented_labels)
+        if choices is not None :
+            for idx,transformation in enumerate(transforms):
+                if choices[idx]:
+                    data = transformation(data)
+                    if segmented_labels is not None:
+                        segmented_labels = transformation(segmented_labels)
+
+        else :           
+            for transformation in transforms:
+                if random.getrandbits(1):
+                    data = transformation(data)
+                    if segmented_labels is not None:
+                        segmented_labels = transformation(segmented_labels)
     return data

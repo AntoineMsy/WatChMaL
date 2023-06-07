@@ -4,12 +4,13 @@ Class implementing a dataset for PointNet in h5 format
 
 # generic imports
 import numpy as np
-
+from torch import from_numpy
+import torch
 # WatChMaL imports
 from watchmal.dataset.h5_dataset import H5Dataset
 from watchmal.dataset.pointnet import transformations
 import watchmal.dataset.data_utils as du
-
+from sklearn.preprocessing import StandardScaler
 
 class PointNetDataset(H5Dataset):
     """
@@ -19,7 +20,7 @@ class PointNetDataset(H5Dataset):
     The second dimension of the data tensor is over the hit PMTs of the event.
     """
 
-    def __init__(self, h5file, geometry_file, use_times=True, use_orientations=False, n_points=4000, transforms=None):
+    def __init__(self, h5file, geometry_file, use_times=True, use_orientations=False, transforms=None):
         """
         Constructs a dataset for PointNet data. Event hit data is read in from the HDF5 file and the PMT charge and/or
         time data is formatted into an array of points, with x, y and z position and other channels for orientation,
@@ -48,10 +49,13 @@ class PointNetDataset(H5Dataset):
         super().__init__(h5file)
         geo_file = np.load(geometry_file, 'r')
         self.geo_positions = geo_file["position"].astype(np.float32)
+        
+        geopos_scaler = StandardScaler()
+        self.geo_positions = geopos_scaler.fit_transform(self.geo_positions)
         self.geo_orientations = geo_file["orientation"].astype(np.float32)
         self.use_orientations = use_orientations
         self.use_times = use_times
-        self.n_points = n_points
+        
         self.transforms = du.get_transformations(transformations, transforms)
         self.channels = 4
         if use_orientations:
@@ -59,22 +63,42 @@ class PointNetDataset(H5Dataset):
         if use_times:
             self.channels += 1
 
+        ################
+        
+        self.mu_q = 2.634658   #np.mean(train_events)
+        self.mu_t = 1115.6687   #np.mean(train_events)
+        self.std_q = 6.9462004  #np.std(train_events)
+        self.std_t = 263.4307  #np.std(train_events)
+        
+        ################
+
     def __getitem__(self, item):
-
+        # if type(item) == list :
+        #     n_pad = item[1]
+        #     item = item[0] 
+        # else : 
+        #     n_pad = 0
         data_dict = super().__getitem__(item)
-
-        n_hits = min(self.n_points, self.event_hit_pmts.shape[0])
-        hit_positions = self.geo_positions[self.event_hit_pmts[:n_hits], :]
-        data = np.zeros((self.channels, self.n_points), dtype=np.float32)
+        n_hits = self.event_hit_pmts.shape[0]
+        n_pad = 256 - n_hits%256
+        hit_positions = from_numpy(self.geo_positions[self.event_hit_pmts[:n_hits], :])
+        data = torch.zeros((self.channels, n_hits + n_pad))
         data[:3, :n_hits] = hit_positions.T
         if self.use_orientations:
-            hit_orientations = self.geo_orientations[self.event_hit_pmts[:n_hits], :]
+            hit_orientations = from_numpy(self.geo_orientations[self.event_hit_pmts[:n_hits], :])
             data[3:6, :n_hits] = hit_orientations.T
         if self.use_times:
-            data[-2, :n_hits] = self.event_hit_times[:n_hits]
-        data[-1, :n_hits] = self.event_hit_charges[:n_hits]
+            data[-2, :n_hits] = from_numpy(self.feature_scaling_std(self.event_hit_times[:n_hits], self.mu_t, self.std_t))
+        data[-1, :n_hits] = from_numpy(self.feature_scaling_std(self.event_hit_charges[:n_hits], self.mu_q, self.std_q))
 
         data = du.apply_random_transformations(self.transforms, data)
 
         data_dict["data"] = data
         return data_dict
+    
+    def feature_scaling_std(self, hit_array, mu, std):
+        """
+            Scale data using standarization.
+        """
+        standarized_array = (hit_array - mu)/std
+        return standarized_array

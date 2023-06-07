@@ -8,7 +8,7 @@ from matplotlib.patches import Circle
 from matplotlib.collections import PatchCollection
 import matplotlib.colors as colors
 import copy
-from contextlib import nullcontext
+from contextlib2 import nullcontext
 
 
 def plot_event_2d(pmt_data, data_coordinates, pmt_coordinates, label = None, fig_width=None, title=None, style=None,
@@ -139,6 +139,7 @@ def plot_event_3d(pmt_data, data_coordinates, unhit_pmt_coordinates=None, fig_si
 
     with plt.style.context(style) if style else nullcontext():
         fig, ax = plt.subplots(figsize=fig_size, subplot_kw={'projection': '3d'})
+        print(type(ax))
         ax.view_init(elev=view_elevation, azim=view_azimuth, vertical_axis=vertical_axis)
         scale = np.min(fig.get_size_inches()/[15, 12])
         # It would be nice to plot circles oriented by their actual orientation, but this is difficult to do with 3D patches

@@ -10,6 +10,7 @@ import torch.nn.functional as F
 # generic imports
 import numpy as np
 import torch
+import random 
 
 # WatChMaL imports
 from watchmal.dataset.h5_dataset import H5Dataset
@@ -27,7 +28,7 @@ class CNNmPMTDataset(H5Dataset):
     with mPMTs arrange in an event-display-like format.
     """
 
-    def __init__(self, h5file, mpmt_positions_file, padding_type=None, transforms=None, collapse_arrays=False, systematic_transform = False):
+    def __init__(self, h5file, mpmt_positions_file, padding_type=None, transforms=None, mode=['charge'], collapse_arrays=False, systematic_transform = False):
         """
         Constructs a dataset for CNN data. Event hit data is read in from the HDF5 file and the PMT charge data is
         formatted into an event-display-like image for input to a CNN. Each pixel of the image corresponds to one mPMT
@@ -56,7 +57,8 @@ class CNNmPMTDataset(H5Dataset):
                             np.count_nonzero(self.mpmt_positions[:, 0] == row) == self.data_size[1]]
         n_channels = pmts_per_mpmt
         self.data_size = np.insert(self.data_size, 0, n_channels)
-       
+        self.mode = mode 
+
         self.collapse_arrays = collapse_arrays
         self.transforms = du.get_transformations(self, transforms)
         self.systematic_transform = systematic_transform
@@ -70,6 +72,16 @@ class CNNmPMTDataset(H5Dataset):
 
         self.horizontal_flip_mpmt_map = [0, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 12, 17, 16, 15, 14, 13, 18]
         self.vertical_flip_mpmt_map = [6, 5, 4, 3, 2, 1, 0, 11, 10, 9, 8, 7, 15, 14, 13, 12, 17, 16, 18]
+        self.coords_list = np.array([[2,4], [3,4], [4,3], [4,2], [4,1], [3,0], [2,0], [1,0], [0,1], [0,2], [0,3], [1,4], [2,3], [3,3], [3,1], [2,1], [1,1], [1,3], [2,2]])
+
+         ################
+        
+        self.mu_q = 2.634658   #np.mean(train_events)
+        self.mu_t = 1115.6687   #np.mean(train_events)
+        self.std_q = 6.9462004  #np.std(train_events)
+        self.std_t = 263.4307  #np.std(train_events)
+        
+        ################
 
     def process_data(self, hit_pmts, hit_data):
         """
@@ -110,26 +122,83 @@ class CNNmPMTDataset(H5Dataset):
 
     def __getitem__(self, item):
         data_dict = super().__getitem__(item)
-        processed_data = from_numpy(self.process_data(self.event_hit_pmts, self.event_hit_charges))
-        #if sae do processed_data = self.pad(self.norm_transform(processed_data))
         
-        if self.systematic_transform:
-            processed_data = du.apply_transformations(self.transforms, processed_data)
-        else : 
-            #processed_data = self.norm_event(processed_data)
-            processed_data = du.apply_random_transformations(self.transforms, processed_data)
+        #processed_data = from_numpy(self.process_data(self.event_hit_pmts, self.event_hit_charges))
+        # if self.systematic_transform:
+        #     processed_data = du.apply_transformations(self.transforms, processed_data)
+        # else : 
+        #     #processed_data = self.norm_event(processed_data)
+        #     processed_data = du.apply_random_transformations(self.transforms, processed_data)
+        # if self.padding_type is not None:
+        #     processed_data = self.padding_type(processed_data)
+            
+        #processed_data = self.reshape_img(processed_data)
+
+        # select random choices for transformations for charge and time
+        rand_choices = []
+        if self.transforms is not None:
+            rand_choices = [bool(random.getrandbits(1)) for i in range(len(self.transforms))]
         
-        processed_data = self.log_transform(processed_data)
-       
-        if self.padding_type is not None:
-            processed_data = self.padding_type(processed_data)
+        if 'charge' in self.mode:
+            hit_data = self.event_hit_charges
+         
+            hit_data = self.feature_scaling_std(hit_data, self.mu_q, self.std_q)
+            
+            charge_image = from_numpy(self.process_data(self.event_hit_pmts, hit_data))
+            charge_image = du.apply_random_transformations(self.transforms, charge_image, choices = rand_choices)
+            charge_image = self.padding_type(charge_image)
+
+            # if 'charge' in self.collapse_mode:
+            #     mean_channel = torch.mean(charge_image, 0, keepdim=True)
+            #     std_channel = torch.std(charge_image, 0, keepdim=True)
+            #     charge_image = torch.cat((mean_channel, std_channel), 0)
+        
+        if 'time' in self.mode:
+            hit_data = self.event_hit_times
+        
+            hit_data = self.feature_scaling_std(hit_data, self.mu_t, self.std_t)
+
+            time_image = from_numpy(self.process_data(self.event_hit_pmts, hit_data))
+            time_image = du.apply_random_transformations(self.transforms, time_image, choices = rand_choices)
+            time_image = self.padding_type(time_image)
+
+            # if 'time' in self.collapse_mode:
+            #     mean_channel = torch.mean(time_image, 0, keepdim=True)
+            #     std_channel = torch.std(time_image, 0, keepdim=True)
+            #     time_image = torch.cat((mean_channel, std_channel), 0)
+
+        
+        # Merge all channels
+        if ('time' in self.mode) and ('charge' in self.mode):
+            processed_image = torch.cat((charge_image, time_image), 0)
+        elif 'charge' in self.mode:
+            processed_image = charge_image
+        else:
+            processed_image = time_image
+
         data_dict["cond_vec"] = torch.tensor(np.concatenate((data_dict["energies"], data_dict["angles"], np.squeeze(data_dict["positions"]))))
         del data_dict["energies"]
         del data_dict["positions"]
         del data_dict["angles"]
-        data_dict["data"] = processed_data
+        #processed_image = self.log_scaling(processed_image)
+        data_dict["data"] = processed_image
         
         return data_dict
+
+    def reshape5x5(self, m_vals):
+        out = torch.zeros(5,5)
+        for k in range(len(m_vals)):
+            out[self.coords_list[k][0],self.coords_list[k][1]] = m_vals[k]
+        return out[None,:]
+
+    def reshape_img(self,data):
+        t_out = torch.empty(data.shape[-2]*5,data.shape[-1]*5)
+        for i in range(data.shape[-2]):
+            for j in range(data.shape[-1]):
+                mpmt_vals = data[:,i,j]
+                #t_out[i:i+5,j:j+5] = 
+                t_out[5*i:5*(i+1),5*j:5*(j+1)] = self.reshape5x5(mpmt_vals)
+        return t_out[None,:]
     
     def log_scaling(self,data):
         return self.log_transform(data)/self.log_global_max
@@ -305,3 +374,10 @@ class CNNmPMTDataset(H5Dataset):
         padded_data = torch.cat(concat_order, dim=1)
 
         return padded_data
+
+    def feature_scaling_std(self, hit_array, mu, std):
+            """
+                Scale data using standarization.
+            """
+            standarized_array = (hit_array - mu)/std
+            return standarized_array

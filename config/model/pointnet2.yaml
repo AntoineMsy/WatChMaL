@@ -1,0 +1,2 @@
+_target_: watchmal.model.pointnet2.pointnet2_cls_msg.PointNet2MSG
+num_class : 4

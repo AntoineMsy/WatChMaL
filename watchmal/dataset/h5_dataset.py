@@ -59,12 +59,14 @@ class H5CommonDataset(Dataset, ABC):
         self.labels = np.array(self.h5_file["labels"])
 
         self.positions  = np.array(self.h5_file["positions"])
+        self.tpositions = self.positions
         self.angles     = np.array(self.h5_file["angles"])
         self.energies   = np.array(self.h5_file["energies"])
-
+        
         energy_scaler = StandardScaler()
         pos_scaler = StandardScaler()
         angles_scaler = StandardScaler()
+        
         self.positions = np.expand_dims(pos_scaler.fit_transform(np.squeeze(self.positions,axis=1)),axis=1)
         self.angles = angles_scaler.fit_transform(self.angles)
         self.energies = energy_scaler.fit_transform(self.energies)
@@ -123,12 +125,13 @@ class H5CommonDataset(Dataset, ABC):
     def __getitem__(self, item):
         if not self.initialized:
             self.initialize()
-
+        
         data_dict = {
             "labels": self.labels[item].astype(np.int64),
             "energies": self.energies[item],
             "angles": self.angles[item],
             "positions": self.positions[item],
+            "tpositions": self.tpositions[item],
             # "event_ids": self.event_ids[item],
             # "root_files": self.root_files[item],
             "indices": item
@@ -160,7 +163,14 @@ class H5Dataset(H5CommonDataset, ABC):
        
     def __getitem__(self, item):
         data_dict = super().__getitem__(item)
+        # if type(item) == list:
+        #     start = [self.event_hits_index[item[i]] for i in range(len(item))]
+        #     stop = [self.event_hits_index[item[i] + 1] for i in range(len(item))]
 
+        #     self.event_hit_pmts = np.array([self.hit_pmt[start[i]:stop[i]] for i in range(len(start))])
+        #     self.event_hit_charges = np.array([self.hit_charge[start[i]:stop[i]] for i in range(len(start))])
+        #     self.event_hit_times = np.array([self.time[start[i]:stop[i]] for i in range(len(start))])
+        # else :
         start = self.event_hits_index[item]
         stop = self.event_hits_index[item + 1]
 
@@ -168,6 +178,10 @@ class H5Dataset(H5CommonDataset, ABC):
         self.event_hit_charges = self.hit_charge[start:stop]
         self.event_hit_times = self.time[start:stop]
 
+        # except :
+        #     print("error in loader")
+        #     print(data_dict)
+        #     print(item)
         return data_dict
 
 
