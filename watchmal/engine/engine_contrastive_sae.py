@@ -101,18 +101,18 @@ class VMBDLSEngine:
         self.loss_func = SamplesLoss("sinkhorn", blur=0.05,scaling = 0.95,diameter=0.01,debias=True)
        
         ## Earlier resnet layers
-        self.layer_size = self.model.enc_out_dim + self.model.latent_dim
+        self.layer_size = self.model_accs.enc_out_dim + self.model_accs.latent_dim
        
-        if self.model.enc_type == 'resnet18':
+        if self.model_accs.enc_type == 'resnet18':
             self.layer_size += 448
-        elif self.model.enc_type == 'wresnet':
+        elif self.model_accs.enc_type == 'wresnet':
             self.layer_size += 1120
-        elif self.model.enc_type == "resnet50":
+        elif self.model_accs.enc_type == "resnet50":
             self.layer_size += 1792
         else:
             self.layer_size += 300
 
-        self.model.use_sinkhorn = True
+        self.model_accs.use_sinkhorn = True
 
     def configure_optimizers(self, optimizer_config):
         """Instantiate an optimizer from a hydra config."""
@@ -168,35 +168,23 @@ class VMBDLSEngine:
             global_metric_dict[name] = torch.cat(global_tensor)
         
         return global_metric_dict
+    def backward(self):
+        self.loss.backward()  
+       
+        self.optimizer.step()
+        self.optimizer.zero_grad()
 
     def train_step(self):
-        
-        self.optimizer.zero_grad()
         x = self.data.to(self.device)
         y = self.labels.to(self.device)
         vars = self.vars.to(self.device)
         cur_classes = torch.unique(y).long()
-        z = self.model(x)
-        bs = x.size()[0]
+        z, cond_x, rand_z = self.model(x, y,vars, device = self.device)
         
-        y_onehot = torch.FloatTensor(bs, self.model.class_num).to(self.device)
-        y_onehot.zero_()
-        cond_x = y_onehot.scatter(1, y.reshape([-1,1]),1).to(self.device)
-        cond_x = torch.concat((cond_x,vars),dim=1)
-
-        #cosloss = self.simloss(z)
-        rand_x = torch.rand(bs, self.model.input_size).to(self.device) ### Generate input noise for the noise generator
-        rand_z = self.model.generate_noise(rand_x,cond_x) ### Generate noise from random vector and conditional params
-      
         ng_loss = self.loss_func(torch.cat([z,cond_x],1), torch.cat([rand_z,cond_x],1)) ### noise generator losss, conditional params added to compute also loss for generating noise close to this from other conditionals
-        
         #triplets = self.miner(z,y)
         contrastive_loss = self.metric_loss(z,y)
         self.loss = contrastive_loss + self.kl_coeff*ng_loss
-
-        self.loss.backward()  
-       
-        self.optimizer.step() 
         logs = {
             "loss": self.loss.item(),
             "kl_loss": ng_loss.item(),
@@ -225,7 +213,7 @@ class VMBDLSEngine:
                 self.labels = val_data['labels']
                 out = self.test_step()
                 test_outputs.append(list(out))
-           
+        print("evaluating")   
         self.test_epoch_end(test_outputs)
         # return model to training mode
         self.model.train()
@@ -235,9 +223,9 @@ class VMBDLSEngine:
     def test_step(self):
         x = self.data.to(self.device)
         y = self.labels.to(self.device)
-        z= self.model.fc_out(self.model.encoder(x))
+        z= self.model_accs.fc_out(self.model_accs.encoder(x))
         
-        l_features = [torch.flatten(self.model.encoder.get_layer_output(x,i),1) for i in range(1,5)] + [z]
+        l_features = [torch.flatten(self.model_accs.encoder.get_layer_output(x,i),1) for i in range(1,5)] + [z]
         l_features = torch.hstack(l_features)
       
         cur_classes = torch.unique(y)     
@@ -427,7 +415,7 @@ class VMBDLSEngine:
                 self.vars = train_data["cond_vec"]
                 # Call forward: make a prediction & measure the average error using data = self.data
                 res = self.train_step()
-
+                self.backward()
                 # update the epoch and iteration
                 # self.epoch += 1. / len(self.data_loaders["train"])
                 self.step += 1

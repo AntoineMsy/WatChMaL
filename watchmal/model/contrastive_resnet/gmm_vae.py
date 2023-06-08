@@ -83,12 +83,27 @@ class GMM_VAE_Contrastive(nn.Module):
         ###############
 
 
-    def forward(self, x):
+    def forward(self, x, y = None, vars = None, device = "cuda:0"):
         x = self.encoder(x)
         # return x
         if self.use_sinkhorn :
             z = self.fc_out(x)
-            return z
+            if y!= None :
+                bs = x.size()[0]
+                
+                y_onehot = torch.FloatTensor(bs, self.class_num).to(device)
+                y_onehot.zero_()
+                cond_x = y_onehot.scatter(1, y.reshape([-1,1]),1).to(device)
+                cond_x = torch.concat((cond_x,vars),dim=1)
+
+                #cosloss = self.simloss(z)
+                rand_x = torch.rand(bs, self.input_size).to(device) ### Generate input noise for the noise generator
+                rand_z = self.generate_noise(rand_x,cond_x) ### Generate noise from random vector and conditional params
+                
+                return z, cond_x, rand_z
+            else :
+
+                return z
         else :
             mu = self.fc_mu(x)
             log_var = self.fc_var(x)
