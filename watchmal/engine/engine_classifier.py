@@ -170,7 +170,7 @@ class ClassifierEngine:
             result['loss'] = self.loss.item()
             result['accuracy'] = accuracy
             result["len"] = data.size()[2]
-            if ((self.step+1)%self.accum_iter ==0) or (self.step+1 == len(self.train_loader)):
+            if train and (((self.step+1)%self.accum_iter ==0) or (self.step+1 == len(self.train_loader))):
                 self.optimizer.step()       # step params
                 self.optimizer.zero_grad(set_to_none = True)  # reset accumulated gradient
         return result

@@ -16,12 +16,16 @@ def SubsetSequentialSampler(indices):
     return indices
 
 class LenMatchBatchSampler(torch.utils.data.BatchSampler):
+    def __init__(self, data_source, sampler, batch_size, drop_last):
+        super().__init__(sampler, batch_size, drop_last)
+        self.dataset = data_source
     def __iter__(self):
         buckets = [[]] * 5000
         yielded = 0
         
         for idx in self.sampler:
-            s = self.sampler.data_source[idx]
+            #s = self.sampler.data_source[idx]
+            s = self.dataset[idx]
             L = s["data"].shape[1]
             
             # if isinstance(s, tuple):

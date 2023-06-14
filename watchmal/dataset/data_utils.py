@@ -73,8 +73,8 @@ def get_data_loader(dataset, batch_size, sampler, num_workers, is_distributed, s
     if is_graph:
         return PyGDataLoader(dataset, sampler=sampler, batch_size=batch_size, num_workers=num_workers)
     elif is_batch:
-        sampler = RandomSampler(data_source=  dataset)
-        lenmatch_sampler = LenMatchBatchSampler(sampler = sampler, batch_size= batch_size, drop_last=False)
+        #sampler = RandomSampler(data_source = dataset)
+        lenmatch_sampler = LenMatchBatchSampler(data_source= dataset, sampler = sampler, batch_size= batch_size, drop_last=False)
         # TODO: added drop_last, should decide if we want to keep this
         return DataLoader(dataset, batch_sampler=lenmatch_sampler, num_workers=num_workers, persistent_workers=True, pin_memory=True)
     else :
