@@ -184,7 +184,7 @@ class VMBDLSEngine:
         ng_loss = self.loss_func(torch.cat([z,cond_x],1), torch.cat([rand_z,cond_x],1)) ### noise generator losss, conditional params added to compute also loss for generating noise close to this from other conditionals
         #triplets = self.miner(z,y)
         contrastive_loss = self.metric_loss(z,y)
-        self.loss = contrastive_loss + self.kl_coeff*ng_loss
+        self.loss = contrastive_loss + ng_loss
         logs = {
             "loss": self.loss.item(),
             "kl_loss": ng_loss.item(),

@@ -1,5 +1,6 @@
 gpu_list:
-    - 0
+    - 6
+    - 7
 seed: null
 dump_path: './outputs/'
 defaults:
@@ -9,9 +10,9 @@ defaults:
     - engine: classifier
     - tasks/train: train_pointnet
     - optimizers@tasks.train.optimizers: adam
-    - sampler@tasks.train.data_loaders.train.sampler: random
-    - sampler@tasks.train.data_loaders.validation.sampler: random
+    - sampler@tasks.train.data_loaders.train.sampler: subset_random
+    - sampler@tasks.train.data_loaders.validation.sampler: subset_random
     - tasks/restore_best_state: restore_best_state
     - tasks/evaluate: test
-    - sampler@tasks.evaluate.data_loaders.test.sampler: random
+    - sampler@tasks.evaluate.data_loaders.test.sampler: subset_random
     - _self_

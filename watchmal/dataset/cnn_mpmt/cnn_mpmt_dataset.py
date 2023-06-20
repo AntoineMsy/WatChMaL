@@ -49,7 +49,7 @@ class CNNmPMTDataset(H5Dataset):
             i.e. provide the sum of PMT charges in each mPMT instead of providing all PMT charges.
         """
         super().__init__(h5file)
-        
+        self.h5file = h5file
         self.mpmt_positions = np.load(mpmt_positions_file)['mpmt_image_positions']
         self.data_size = np.max(self.mpmt_positions, axis=0) + 1
         self.norm_transform = tvtf.Normalize(mean=[0.5], std=[0.5])
@@ -142,11 +142,13 @@ class CNNmPMTDataset(H5Dataset):
         if 'charge' in self.mode:
             hit_data = self.event_hit_charges
          
-            hit_data = self.feature_scaling_std(hit_data, self.mu_q, self.std_q)
+            #hit_data = self.feature_scaling_std(hit_data, self.mu_q, self.std_q)
             
             charge_image = from_numpy(self.process_data(self.event_hit_pmts, hit_data))
-            charge_image = du.apply_random_transformations(self.transforms, charge_image, choices = rand_choices)
-            charge_image = self.padding_type(charge_image)
+            if self.transforms is not None:
+                charge_image = du.apply_random_transformations(self.transforms, charge_image, choices = rand_choices)
+            if self.padding_type is not None:
+                charge_image = self.padding_type(charge_image)
 
             # if 'charge' in self.collapse_mode:
             #     mean_channel = torch.mean(charge_image, 0, keepdim=True)
@@ -160,7 +162,8 @@ class CNNmPMTDataset(H5Dataset):
 
             time_image = from_numpy(self.process_data(self.event_hit_pmts, hit_data))
             time_image = du.apply_random_transformations(self.transforms, time_image, choices = rand_choices)
-            time_image = self.padding_type(time_image)
+            if self.padding_type is not None :
+                time_image = self.padding_type(time_image)
 
             # if 'time' in self.collapse_mode:
             #     mean_channel = torch.mean(time_image, 0, keepdim=True)
@@ -176,6 +179,7 @@ class CNNmPMTDataset(H5Dataset):
         else:
             processed_image = time_image
 
+        processed_image = self.log_transform(processed_image)
         data_dict["cond_vec"] = torch.tensor(np.concatenate((data_dict["energies"], data_dict["angles"], np.squeeze(data_dict["positions"]))))
         del data_dict["energies"]
         del data_dict["positions"]

@@ -61,7 +61,8 @@ def get_data_loader(dataset, batch_size, sampler, num_workers, is_distributed, s
         split_indices = np.load(split_path, allow_pickle=True)[split_key]
         sampler = instantiate(sampler, split_indices)
     else:
-        sampler = instantiate(sampler)
+        split_indices = range(len(dataset))
+        sampler = instantiate(sampler, split_indices)
     
     if is_distributed:
         ngpus = torch.distributed.get_world_size()

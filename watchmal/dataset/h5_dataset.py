@@ -42,7 +42,7 @@ class H5CommonDataset(Dataset, ABC):
         with h5py.File(self.h5_path, 'r') as h5_file:
             self.dataset_length = h5_file["labels"].shape[0]
 
-        self.label_set = None
+        self.label_set = [0,1,2]
 
         self.initialized = False
 
@@ -107,12 +107,16 @@ class H5CommonDataset(Dataset, ABC):
             labels.
         """
         self.label_set = set(label_set)
+        new_length = 0
         if self.initialized:
             labels = np.ndarray(self.labels.shape, dtype=int)
             for i, l in enumerate(self.label_set):
                 labels[self.labels == l] = i
+                new_length += len(labels[self.labels==l])
             self.original_labels = self.labels
             self.labels = labels
+            self.dataset_length = new_length
+            
 
     @abstractmethod
     def load_hits(self):
@@ -153,6 +157,8 @@ class H5Dataset(H5CommonDataset, ABC):
     """
     def __init__(self, h5_path):
         H5CommonDataset.__init__(self, h5_path)
+        
+        
         
     def load_hits(self):
         """Creates a memmap for the digitized hit charge data."""

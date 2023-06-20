@@ -5,7 +5,7 @@ dump_path: './outputs/'
 defaults:
     - data: iwcd_short
     - data/dataset: iwcd_cnn_short
-    - model: vmdls
+    - model: vmdls_sae
     - engine: contrastive
     - tasks/train: train_vmdls
     - optimizers@tasks.train.optimizers: adam

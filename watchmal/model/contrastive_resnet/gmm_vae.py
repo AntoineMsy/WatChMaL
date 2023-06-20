@@ -64,23 +64,21 @@ class GMM_VAE_Contrastive(nn.Module):
         else:
             self.encoder = valid_encoders[enc_type]['enc'](first_conv, maxpool1,channels)
         
-
-        self.fc_out = nn.Linear(self.enc_out_dim, self.latent_dim)
-        
-        self.fc_mu = nn.Linear(self.enc_out_dim, self.latent_dim)
-        self.fc_var = nn.Linear(self.enc_out_dim, self.latent_dim)
-
-      
-        
         self.enc_type = enc_type
 
-        ############        noise_gen
-        self.ng_fc1 = nn.Linear(self.input_size, self.d//2)
-        self.ng_input_2 = nn.Linear(self.class_num+6,self.d//4)
-        self.ng_fc2 = nn.Linear(self.d*3//4, self.d)
-        self.ng_fc3 = nn.Linear(self.d, self.d*3//4)
-        self.ng_fc4 = nn.Linear(self.d*3//4, self.latent_dim)
-        ###############
+        if self.use_sinkhorn : 
+            self.fc_out = nn.Linear(self.enc_out_dim, self.latent_dim)
+            ############        noise_gen
+            self.ng_fc1 = nn.Linear(self.input_size, self.d//2)
+            self.ng_input_2 = nn.Linear(self.class_num+6,self.d//4)
+            self.ng_fc2 = nn.Linear(self.d*3//4, self.d)
+            self.ng_fc3 = nn.Linear(self.d, self.d*3//4)
+            self.ng_fc4 = nn.Linear(self.d*3//4, self.latent_dim)
+            ###############
+        else :
+            self.fc_mu = nn.Linear(self.enc_out_dim, self.latent_dim)
+            self.fc_var = nn.Linear(self.enc_out_dim, self.latent_dim)
+            
 
 
     def forward(self, x, y = None, vars = None, device = "cuda:0"):

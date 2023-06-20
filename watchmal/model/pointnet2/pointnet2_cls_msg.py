@@ -34,7 +34,6 @@ class PointNet2MSG(nn.Module):
         x = self.drop1(F.relu(self.bn1(self.fc1(x))))
         x = self.drop2(F.relu(self.bn2(self.fc2(x))))
         x = self.fc3(x)
-
         return x
 
 

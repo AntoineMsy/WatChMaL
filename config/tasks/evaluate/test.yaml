@@ -1,9 +1,11 @@
 data_loaders:
   test:
     split_key: test_idxs
-    batch_size: 1024
-    is_batch : True
+    batch_size: 8096
+    #is_batch : True
     num_workers: 2
-    transforms: 
+    sampler:
+          _target_: watchmal.dataset.samplers.SubsetSequentialSampler
+    
       
 

@@ -28,7 +28,7 @@ from watchmal.utils.logging_utils import CSVData
 
 class ClassifierEngine:
     """Engine for performing training or evaluation  for a classification network."""
-    def __init__(self, model, rank, gpu, dump_path, label_set=None):
+    def __init__(self, model, rank, gpu, dump_path, blind_eval = True, label_set=None):
         """
         Parameters
         ==========
@@ -52,7 +52,8 @@ class ClassifierEngine:
         self.rank = rank
         self.model = model
         self.device = torch.device(gpu)
-
+        self.accum_iter = 1
+        self.blind_eval = blind_eval
         # Setup the parameters to save given the model type
         if isinstance(self.model, DDP):
             self.is_distributed = True
@@ -154,25 +155,29 @@ class ClassifierEngine:
             data = self.data.to(self.device)
             labels = self.labels.to(self.device)
             model_out = self.model(data)
-            
+            print(data)
             softmax = self.softmax(model_out)
-            predicted_labels = torch.argmax(model_out, dim=-1)
+            if self.blind_eval :
+                return {"softmax" : softmax}
+            
+            else :
+                predicted_labels = torch.argmax(model_out, dim=-1)
 
-            result = {'predicted_labels': predicted_labels,
-                      'softmax': softmax,
-                      'raw_pred_labels': model_out}
+                result = {'predicted_labels': predicted_labels,
+                        'softmax': softmax,
+                        'raw_pred_labels': model_out}
 
-            self.loss = self.criterion(model_out, labels)/self.accum_iter
-            if train :
-                self.loss.backward()        # compute new gradient
-            accuracy = (predicted_labels == labels).sum().item() / float(predicted_labels.nelement())
+                self.loss = self.criterion(model_out, labels)/self.accum_iter
+                if train :
+                    self.loss.backward()        # compute new gradient
+                accuracy = (predicted_labels == labels).sum().item() / float(predicted_labels.nelement())
 
-            result['loss'] = self.loss.item()
-            result['accuracy'] = accuracy
-            result["len"] = data.size()[2]
-            if train and (((self.step+1)%self.accum_iter ==0) or (self.step+1 == len(self.train_loader))):
-                self.optimizer.step()       # step params
-                self.optimizer.zero_grad(set_to_none = True)  # reset accumulated gradient
+                result['loss'] = self.loss.item()
+                result['accuracy'] = accuracy
+                result["len"] = data.size()[2]
+                if train and (((self.step+1)%self.accum_iter ==0) or (self.step+1 == len(self.train_loader))):
+                    self.optimizer.step()       # step params
+                    self.optimizer.zero_grad(set_to_none = True)  # reset accumulated gradient
         return result
     
     def backward(self):
@@ -207,7 +212,7 @@ class ClassifierEngine:
         self.epoch = 0.
         self.iteration = 0
         self.step = 0
-        self.accum_iter = 8
+        
         # keep track of the validation loss
         self.best_validation_loss = 1.0e10
 
@@ -354,12 +359,13 @@ class ClassifierEngine:
         """Evaluate the performance of the trained model on the test set."""
         print("evaluating in directory: ", self.dirpath)
 
-        
+        file_key = self.data_loaders["test"].dataset.h5file[-8:-3]
+        print(file_key)
         # Variables to output at the end
         eval_loss = 0.0
         eval_acc = 0.0
         eval_iterations = 0
-        
+    
         # Iterate over the validation set to calculate val_loss and val_acc
         with torch.no_grad():
             
@@ -380,18 +386,21 @@ class ClassifierEngine:
                 
                 # Run the forward procedure and output the result
                 result = self.forward(train=False)
-            
-                eval_loss += result['loss']
-                eval_acc  += result['accuracy']
                 
-                # Add the local result to the final result
-                indices.extend(eval_indices.numpy())
-                labels.extend(self.labels.numpy())
-                predictions.extend(result['predicted_labels'].detach().cpu().numpy())
                 softmaxes.extend(result["softmax"].detach().cpu().numpy())
-                if eval_iterations % 1000 ==0:
-                    print("eval_iteration : " + str(it) + " eval_loss : " + str(result["loss"]) + " eval_accuracy : " + str(result["accuracy"]))
-            
+
+                if not self.blind_eval:
+                    eval_loss += result['loss']
+                    eval_acc  += result['accuracy']
+                    
+                    # Add the local result to the final result
+                    indices.extend(eval_indices.numpy())
+                    labels.extend(self.labels.numpy())
+                    predictions.extend(result['predicted_labels'].detach().cpu().numpy())
+                
+                    if eval_iterations % 1000 ==0:
+                        print("eval_iteration : " + str(it) + " eval_loss : " + str(result["loss"]) + " eval_accuracy : " + str(result["accuracy"]))
+                
                 eval_iterations += 1
                 
         
@@ -435,7 +444,7 @@ class ClassifierEngine:
             np.save(self.dirpath + "indices.npy", indices)#sorted_indices)
             np.save(self.dirpath + "labels.npy", labels)#[sorted_indices])
             np.save(self.dirpath + "predictions.npy", predictions)#[sorted_indices])
-            np.save(self.dirpath + "softmax.npy", softmaxes)#[sorted_indices])
+            np.save(self.dirpath + "softmax%s.npy"%(file_key), softmaxes)#[sorted_indices])
             
          
             # Compute overall evaluation metrics
@@ -502,7 +511,7 @@ class ClassifierEngine:
             print('Restoring state from', weight_file)
 
             # torch interprets the file, then we can access using string keys
-            checkpoint = torch.load(f)
+            checkpoint = torch.load(f, map_location='cuda:0')
             
             # load network weights
             self.model_accs.load_state_dict(checkpoint['state_dict'])

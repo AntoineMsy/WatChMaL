@@ -94,6 +94,7 @@ class PointNetDataset(H5Dataset):
         data = du.apply_random_transformations(self.transforms, data)
 
         data_dict["data"] = data
+        data_dict["item"] = torch.tensor(item)
         return data_dict
     
     def feature_scaling_std(self, hit_array, mu, std):
