@@ -28,7 +28,7 @@ class CNNmPMTDataset(H5Dataset):
     with mPMTs arrange in an event-display-like format.
     """
 
-    def __init__(self, h5file, mpmt_positions_file, padding_type=None, transforms=None, mode=['charge'], collapse_arrays=False, systematic_transform = False):
+    def __init__(self, h5file, mpmt_positions_file, padding_type=None, transforms=None, mode=['charge'], log_scale = False, normalize = False, collapse_arrays=False, systematic_transform = False):
         """
         Constructs a dataset for CNN data. Event hit data is read in from the HDF5 file and the PMT charge data is
         formatted into an event-display-like image for input to a CNN. Each pixel of the image corresponds to one mPMT
@@ -58,6 +58,9 @@ class CNNmPMTDataset(H5Dataset):
         n_channels = pmts_per_mpmt
         self.data_size = np.insert(self.data_size, 0, n_channels)
         self.mode = mode 
+
+        self.log_scale = log_scale
+        self.normalize = normalize
 
         self.collapse_arrays = collapse_arrays
         self.transforms = du.get_transformations(self, transforms)
@@ -141,8 +144,8 @@ class CNNmPMTDataset(H5Dataset):
         
         if 'charge' in self.mode:
             hit_data = self.event_hit_charges
-         
-            #hit_data = self.feature_scaling_std(hit_data, self.mu_q, self.std_q)
+            if self.normalize:
+                hit_data = self.feature_scaling_std(hit_data, self.mu_q, self.std_q)
             
             charge_image = from_numpy(self.process_data(self.event_hit_pmts, hit_data))
             if self.transforms is not None:
@@ -157,8 +160,8 @@ class CNNmPMTDataset(H5Dataset):
         
         if 'time' in self.mode:
             hit_data = self.event_hit_times
-        
-            hit_data = self.feature_scaling_std(hit_data, self.mu_t, self.std_t)
+            if self.normalize:
+                hit_data = self.feature_scaling_std(hit_data, self.mu_t, self.std_t)
 
             time_image = from_numpy(self.process_data(self.event_hit_pmts, hit_data))
             time_image = du.apply_random_transformations(self.transforms, time_image, choices = rand_choices)
@@ -179,7 +182,9 @@ class CNNmPMTDataset(H5Dataset):
         else:
             processed_image = time_image
 
-        processed_image = self.log_transform(processed_image)
+        if self.log_scale :
+            processed_image = self.log_transform(processed_image)
+            
         data_dict["cond_vec"] = torch.tensor(np.concatenate((data_dict["energies"], data_dict["angles"], np.squeeze(data_dict["positions"]))))
         del data_dict["energies"]
         del data_dict["positions"]
@@ -222,9 +227,6 @@ class CNNmPMTDataset(H5Dataset):
     def unpad(self,data):
         unpad_val = (0,0,-2,-1)
         return F.pad(data,unpad_val,"constant",0)
-    
-    def normalize(self, data):
-        return self.norm_transform(data)
     
     def horizontal_flip(self, data):
         """
