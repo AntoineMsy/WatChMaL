@@ -3,7 +3,7 @@ import torch.nn as nn
 from watchmal.model.contrastive_resnet.gmm_vae import GMM_VAE_Contrastive
 
 class VMDLS_Classifier(nn.Module):
-    def __init__(self, class_num, enc_type, latent_dim, channels, model_file_path):
+    def __init__(self, class_num, enc_type, latent_dim, channels, model_file_path, use_sinkhorn = False):
         super(VMDLS_Classifier,self).__init__()
         state_dict = torch.load(model_file_path)["state_dict"]
         self.class_num = class_num
@@ -11,7 +11,8 @@ class VMDLS_Classifier(nn.Module):
         self.latent_dim = latent_dim
         self.channels = channels
         self.model_file_path = model_file_path
-        self.feature_extractor = GMM_VAE_Contrastive(class_num = self.class_num, enc_type=self.enc_type, latent_dim=self.latent_dim, channels=self.channels )
+        self.use_sinkhorn = use_sinkhorn
+        self.feature_extractor = GMM_VAE_Contrastive(class_num = self.class_num, enc_type=self.enc_type, latent_dim=self.latent_dim, channels=self.channels, use_sinkhorn= self.use_sinkhorn)
         self.feature_extractor.load_state_dict(state_dict)
         self.layer_size = self.feature_extractor.enc_out_dim + self.feature_extractor.latent_dim
         
@@ -33,11 +34,14 @@ class VMDLS_Classifier(nn.Module):
     
     def forward(self, x):
         with torch.no_grad():
-            mu= self.feature_extractor.fc_mu(self.feature_extractor.encoder(x))
-            z = mu
+            if self.use_sinkhorn :
+                z = self.feature_extractor.fc_out(self.feature_extractor.encoder(x))
+            else :
+                mu= self.feature_extractor.fc_mu(self.feature_extractor.encoder(x))
+                z = mu
             # l_features = [torch.flatten(self.feature_extractor.encoder.get_layer_output(x,i),1) for i in range(1,5)] + [mu]
             # l_features = torch.hstack(l_features)
-            l_features = mu
+            l_features = z
         out = self.classifier(l_features)
         return out
 

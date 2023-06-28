@@ -184,7 +184,7 @@ class Autoencoder(nn.Module):
             self.activation_function = instantiate(activation_function)
         #self.resnet_encoder = ResNet(BasicBlock, [2, 2, 2, 2],self.img_channels, self.lat_dim)
         self.resnet_encoder = resnet18encoder(**{"num_input_channels": self.img_channels ,"num_output_channels": self.lat_dim})
-        self.resnet_decoder = resnet18decoder(**{"num_input_channels": self.img_channels ,"num_output_channels": self.lat_dim, "img_size_x": self.img_size_x, "img_size_y" : self.img_size_y})
+        #self.resnet_decoder = resnet18decoder(**{"num_input_channels": self.img_channels ,"num_output_channels": self.lat_dim, "img_size_x": self.img_size_x, "img_size_y" : self.img_size_y})
         self.encoder = BasicEncoder(input_size, num_classes, img_size_x, img_size_y, in_channels, lat_dim, img_channels)
         self.decoder = BasicDecoder(input_size, num_classes, img_size_x, img_size_y, in_channels, lat_dim, img_channels)
       
@@ -209,7 +209,7 @@ class Autoencoder(nn.Module):
     def forward(self, x):
         y = self.resnet_encoder(x)
         
-        x = self.resnet_decoder(y)
+        x = self.decoder(y)
         return x, y
     
     def classify(self,x):

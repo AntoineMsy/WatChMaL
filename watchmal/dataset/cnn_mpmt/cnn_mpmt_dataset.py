@@ -152,7 +152,8 @@ class CNNmPMTDataset(H5Dataset):
                 charge_image = du.apply_random_transformations(self.transforms, charge_image, choices = rand_choices)
             if self.padding_type is not None:
                 charge_image = self.padding_type(charge_image)
-
+            if self.systematic_transform : 
+                charge_image = self.pad(charge_image)
             # if 'charge' in self.collapse_mode:
             #     mean_channel = torch.mean(charge_image, 0, keepdim=True)
             #     std_channel = torch.std(charge_image, 0, keepdim=True)
@@ -387,3 +388,8 @@ class CNNmPMTDataset(H5Dataset):
             """
             standarized_array = (hit_array - mu)/std
             return standarized_array
+
+    def inv_feature_scaling_std(self, hit_array, mu, std):
+        ### Inverse scaling back to original scale
+        orig_array = std*hit_array + mu
+        return orig_array

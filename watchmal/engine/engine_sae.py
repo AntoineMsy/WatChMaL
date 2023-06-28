@@ -26,7 +26,7 @@ import copy
 # WatChMaL imports
 from watchmal.dataset.data_utils import get_data_loader
 from watchmal.utils.logging_utils import CSVData
-from WatChMaL.watchmal.engine.losses.sinkhorn_add_losses import SIMcLoss, LapLoss
+from watchmal.engine.losses.sinkhorn_add_losses import SIMcLoss, LapLoss
 
 #Clustering imports
 from sklearn.decomposition import PCA
@@ -201,7 +201,7 @@ class AutoEncoderEngine:
                 print(data.size())
                 print(labels.size())
 
-            self.loss = self.noise_gen_weight*ng_loss+ self.reconstruction_weight*loss_mse + 10*cosloss + laploss
+            self.loss = self.noise_gen_weight*ng_loss+ self.reconstruction_weight*loss_mse + 0.01*cosloss + 0.1*laploss
             
 
             result = {'decoded_img': autoencoder_output,

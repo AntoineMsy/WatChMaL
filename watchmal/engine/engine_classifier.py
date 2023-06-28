@@ -28,7 +28,7 @@ from watchmal.utils.logging_utils import CSVData
 
 class ClassifierEngine:
     """Engine for performing training or evaluation  for a classification network."""
-    def __init__(self, model, rank, gpu, dump_path, blind_eval = True, label_set=None):
+    def __init__(self, model, rank, gpu, dump_path, blind_eval = False, label_set=None):
         """
         Parameters
         ==========
@@ -155,7 +155,6 @@ class ClassifierEngine:
             data = self.data.to(self.device)
             labels = self.labels.to(self.device)
             model_out = self.model(data)
-            print(data)
             softmax = self.softmax(model_out)
             if self.blind_eval :
                 return {"softmax" : softmax}
@@ -168,6 +167,7 @@ class ClassifierEngine:
                         'raw_pred_labels': model_out}
 
                 self.loss = self.criterion(model_out, labels)/self.accum_iter
+                
                 if train :
                     self.loss.backward()        # compute new gradient
                 accuracy = (predicted_labels == labels).sum().item() / float(predicted_labels.nelement())

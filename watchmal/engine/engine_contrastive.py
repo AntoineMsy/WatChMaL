@@ -63,7 +63,7 @@ class VMBDLSEngine:
         self.rank = rank
         self.model = model
         self.device = torch.device(gpu)
-        self.class_num = 4
+        
         self.lower_bound = 0.05
 
         # Setup the parameters to save given the model type
@@ -170,11 +170,11 @@ class VMBDLSEngine:
         for i in cur_classes:
             y_count = (y==i).sum()
             rel_zs = z[y==i,:]
-            self.class_temp_means[i,:] += rel_zs.sum(axis = 0).detach()
-            self.class_temp_cov[i,:,:] += torch.matmul(rel_zs.T,rel_zs).detach()
-            self.class_counts[i] += y_count.detach()                       
+            self.model_accs.class_temp_means[i,:] += rel_zs.sum(axis = 0).detach()
+            self.model_accs.class_temp_cov[i,:,:] += torch.matmul(rel_zs.T,rel_zs).detach()
+            self.model_accs.class_counts[i] += y_count.detach()                       
             #Estimation:
-            cp = torch.distributions.Normal(self.class_means[i,:].repeat(y_count,1), torch.ones_like(rel_zs)*(0.1 if i < self.class_num else 1))
+            cp = torch.distributions.Normal(self.model_accs.class_means[i,:].repeat(y_count,1), torch.ones_like(rel_zs)*(0.1 if i < self.model_accs.class_num else 1))
             log_pz = cp.log_prob(rel_zs)
             kl_class = log_qz[y==i] - log_pz
             kl_class = kl_class.mean()
@@ -187,9 +187,9 @@ class VMBDLSEngine:
             # p = torch.distributions.Normal(self.class_means[i,:].repeat(y_count,1), torch.ones_like(rel_zs)*(0.1 if i < self.class_num else 1))
             # kl_loss = torch.distributions.kl.kl_divergence(q,p).mean()*self.kl_coeff
             # kl += kl_loss / len(cur_classes)
-            if self.num_dist_update >= self.generation_step:
-                class_ll = self.class_gaussian[i].log_prob(rel_zs).detach()
-                self.precentiles[i].append(class_ll)
+            if self.num_dist_update > 0:
+                class_ll = self.model_accs.class_gaussian[i].log_prob(rel_zs).detach()
+                self.model_accs.precentiles[i].append(class_ll)
     
         if self.num_dist_update < self.generation_step:
             kl = torch.tensor(0)
@@ -242,27 +242,27 @@ class VMBDLSEngine:
     def training_epoch_end(self):
         class_gaussians = []
         bad_classes = 0
-        for i in range(self.class_num):
-            if self.num_dist_update > 1 + self.generation_step:
-                self.precentiles[i] = torch.hstack(self.precentiles[i])
-                self.class_bounds[i] = torch.quantile(self.precentiles[i],self.lower_bound)
-            self.class_means[i,:] = self.class_temp_means[i,:]/self.class_counts[i]
-            self.class_cov[i,:,:] = self.class_temp_cov[i,:,:]/self.class_counts[i] - torch.matmul(self.class_means[i,:].view(1,-1).T,self.class_means[i,:].view(1,-1)) 
+        for i in range(self.model_accs.class_num):
+            if self.num_dist_update > 0:
+                self.model_accs.precentiles[i] = torch.hstack(self.model_accs.precentiles[i])
+                self.model_accs.class_bounds[i] = torch.quantile(self.model_accs.precentiles[i],self.lower_bound)
+            self.model_accs.class_means[i,:] = self.model_accs.class_temp_means[i,:]/self.model_accs.class_counts[i]
+            self.model_accs.class_cov[i,:,:] = self.model_accs.class_temp_cov[i,:,:]/self.model_accs.class_counts[i] - torch.matmul(self.model_accs.class_means[i,:].view(1,-1).T,self.model_accs.class_means[i,:].view(1,-1)) 
             try:
-                dist = torch.distributions.multivariate_normal.MultivariateNormal(self.class_means[i,:],self.class_cov[i,:,:])
+                dist = torch.distributions.multivariate_normal.MultivariateNormal(self.model_accs.class_means[i,:],self.model_accs.class_cov[i,:,:])
             except:
                 bad_classes += 1
-                dist = torch.distributions.multivariate_normal.MultivariateNormal(torch.zeros_like(self.class_means[i,:],device=self.device),torch.eye(self.class_cov[i,:,:].shape[0],device=self.device))           
+                dist = torch.distributions.multivariate_normal.MultivariateNormal(torch.zeros_like(self.model_accs.class_means[i,:],device=self.device),torch.eye(self.model_accs.class_cov[i,:,:].shape[0],device=self.device))           
             class_gaussians.append(dist)
         
-        cur_num = self.class_num 
-        self.full_gaussian_mean = self.class_means.sum(axis=0) / self.class_counts.sum()
-        self.full_gaussian_cov = self.class_temp_cov.sum(axis=0) / self.class_counts.sum() - torch.matmul(self.full_gaussian_mean.view(1,-1).T,self.full_gaussian_mean.view(1,-1)) 
-        self.class_gaussian = class_gaussians
-        self.precentiles = [[] for i in range(cur_num)]
-        self.class_counts = torch.zeros(cur_num,device=self.device)
-        self.class_temp_means = torch.zeros((cur_num,self.model.latent_dim),device=self.device)
-        self.class_temp_cov = torch.zeros(((cur_num,self.model.latent_dim,self.model.latent_dim)),device=self.device)
+        cur_num = self.model_accs.class_num 
+        self.full_gaussian_mean = self.model_accs.class_means.sum(axis=0) / self.model_accs.class_counts.sum()
+        self.full_gaussian_cov = self.model_accs.class_temp_cov.sum(axis=0) / self.model_accs.class_counts.sum() - torch.matmul(self.full_gaussian_mean.view(1,-1).T,self.full_gaussian_mean.view(1,-1)) 
+        self.model_accs.class_gaussian = class_gaussians
+        self.model_accs.precentiles = [[] for i in range(cur_num)]
+        self.model_accs.class_counts = torch.zeros(cur_num,device=self.device)
+        self.model_accs.class_temp_means = torch.zeros((cur_num,self.model.latent_dim),device=self.device)
+        self.model_accs.class_temp_cov = torch.zeros(((cur_num,self.model.latent_dim,self.model.latent_dim)),device=self.device)
 
 #Main evaluation loop
     def test(self, val_iter, num_val_batches):
@@ -310,9 +310,9 @@ class VMBDLSEngine:
             y_count = (y==i).sum()
             rel_zs = z[y==i,:]
             rel_l_features = l_features[y==i,:]
-            self.class_temp_means[i,:] += rel_zs.sum(axis = 0).detach()
-            self.class_temp_cov[i,:,:] += torch.matmul(rel_zs.T,rel_zs).detach()
-            self.class_counts[i] += y_count.detach()
+            self.model_accs.class_temp_means[i,:] += rel_zs.sum(axis = 0).detach()
+            self.model_accs.class_temp_cov[i,:,:] += torch.matmul(rel_zs.T,rel_zs).detach()
+            self.model_accs.class_counts[i] += y_count.detach()
             self.early_temp_means[i,:] = rel_l_features.sum(axis = 0).detach()
             self.early_temp_cov[i,:,:] = torch.matmul(rel_l_features.T,rel_l_features).detach()
         
@@ -322,12 +322,12 @@ class VMBDLSEngine:
     def test_epoch_end(self, outputs):
         all_data = torch.vstack([x[0] for x in outputs]).cpu().numpy()
         all_labels = torch.hstack([x[1] for x in outputs]).cpu().numpy()
-        all_known_data = all_data[all_labels < self.class_num,...]
-        all_known_labels = all_labels[all_labels < self.class_num]
+        all_known_data = all_data[all_labels < self.model_accs.class_num,...]
+        all_known_labels = all_labels[all_labels < self.model_accs.class_num]
         #all_early_features = torch.vstack([x[3] for x in outputs]).cpu().numpy()
 
         
-        all_known_data = all_data[all_labels < self.class_num,...]
+        all_known_data = all_data[all_labels < self.model_accs.class_num,...]
 
         if self.log_tsne:
             #umapT = umap.UMAP(n_neighbors=15, min_dist=0.1, metric='euclidean')
@@ -335,7 +335,7 @@ class VMBDLSEngine:
             x_te_proj_df = pd.DataFrame(x_te_proj_pca[:, :2], columns=['Proj1', 'Proj2'])
             x_te_proj_df['label'] = all_known_labels
             fig = plt.figure()
-            ax = sns.scatterplot('Proj1', 'Proj2', data=x_te_proj_df,
+            ax = sns.scatterplot(x = 'Proj1', y = 'Proj2', data=x_te_proj_df,
                     palette='tab20',
                     hue='label',
                     linewidth=0,
@@ -359,12 +359,12 @@ class VMBDLSEngine:
         
         all_data = torch.vstack([x[0] for x in outputs]).cpu().numpy()
         all_labels = torch.hstack([x[1] for x in outputs]).cpu().numpy()
-        all_known_data = all_data[all_labels < self.class_num,...]
-        all_known_labels = all_labels[all_labels < self.class_num]
+        all_known_data = all_data[all_labels < self.model_accs.class_num,...]
+        all_known_labels = all_labels[all_labels < self.model_accs.class_num]
         all_early_features = torch.vstack([x[3] for x in outputs]).cpu().numpy()
 
         all_data = all_early_features
-        all_known_data = all_data[all_labels < self.class_num,...]
+        all_known_data = all_data[all_labels < self.model_accs.class_num,...]
 
         data_coords = ["z_" + str(i) for i in range(all_known_data.shape[1])]
 
@@ -410,12 +410,12 @@ class VMBDLSEngine:
         return eval_df
     
     def initialize_gaussians(self):
-        self.class_counts = torch.zeros(self.class_num,device=self.device)
-        self.class_temp_means = torch.zeros((self.class_num,self.model.latent_dim),device=self.device)
-        self.class_temp_cov = torch.zeros(((self.class_num,self.model.latent_dim,self.model.latent_dim)),device=self.device)
-        self.class_means = torch.zeros((self.class_num,self.model.latent_dim),device=self.device)
-        self.class_cov = torch.zeros(((self.class_num,self.model.latent_dim,self.model.latent_dim)),device=self.device)
-        self.class_bounds = torch.zeros(self.class_num,device=self.device)
+        self.model_accs.class_counts = torch.zeros(self.model_accs.class_num,device=self.device)
+        self.model_accs.class_temp_means = torch.zeros((self.model_accs.class_num,self.model_accs.latent_dim),device=self.device)
+        self.model_accs.class_temp_cov = torch.zeros(((self.model_accs.class_num,self.model_accs.latent_dim,self.model_accs.latent_dim)),device=self.device)
+        self.model_accs.class_means = torch.zeros((self.model_accs.class_num,self.model_accs.latent_dim),device=self.device)
+        self.model_accs.class_cov = torch.zeros(((self.model_accs.class_num,self.model_accs.latent_dim,self.model_accs.latent_dim)),device=self.device)
+        self.model_accs.class_bounds = torch.zeros(self.model_accs.class_num,device=self.device)
 
         ## Earlier resnet layers
         self.layer_size = self.model.enc_out_dim + self.model.latent_dim
@@ -428,10 +428,10 @@ class VMBDLSEngine:
             self.layer_size += 1792
         else:
             self.layer_size += 300
-        self.early_temp_means = torch.zeros((self.class_num,self.layer_size),device=self.device)
-        self.early_temp_cov = torch.zeros(((self.class_num,self.layer_size,self.layer_size)),device=self.device)
-        self.early_means = torch.zeros((self.class_num,self.layer_size),device=self.device)
-        self.early_cov = torch.zeros(((self.class_num,self.layer_size,self.layer_size)),device=self.device)
+        self.early_temp_means = torch.zeros((self.model_accs.class_num,self.layer_size),device=self.device)
+        self.early_temp_cov = torch.zeros(((self.model_accs.class_num,self.layer_size,self.layer_size)),device=self.device)
+        self.early_means = torch.zeros((self.model_accs.class_num,self.layer_size),device=self.device)
+        self.early_cov = torch.zeros(((self.model_accs.class_num,self.layer_size,self.layer_size)),device=self.device)
 
 
     def train(self, train_config):
@@ -453,7 +453,7 @@ class VMBDLSEngine:
        
         self.kl_coeff = train_config.kl_coeff
         
-        self.class_num = 4
+        
         self.cov_scaling = train_config.cov_scaling
         self.log_tsne = train_config.log_tsne
         self.is_tested = 0
@@ -533,6 +533,7 @@ class VMBDLSEngine:
                 
                 # get relevant attributes of result for logging
                 train_metrics = {"iteration": self.iteration, "epoch": self.epoch, "loss": res["loss"]}
+
                 if self.warmup_updates < self.warmup_steps:
                     self.warmup_updates+=1
                     for g in self.optimizer.param_groups:
@@ -555,8 +556,6 @@ class VMBDLSEngine:
                 # run validation on given intervals
                 if self.iteration % val_interval == 0:
                     self.validate(val_iter, num_val_batches, checkpointing)
-                    self.training_epoch_end()
-                    self.num_dist_update +=1
 
                     # if self.epoch == 0:
                     #     for g in self.optimizer.param_groups:
@@ -564,6 +563,8 @@ class VMBDLSEngine:
                     
                 # print the metrics at given intervals
                 if self.rank == 0 and self.iteration % report_interval == 0:
+                    self.training_epoch_end()
+                    self.num_dist_update +=1
                     previous_iteration_time = iteration_time
                     iteration_time = time()
 
@@ -686,6 +687,9 @@ class VMBDLSEngine:
                 
                 # Run the forward procedure and output the result
                 out = self.test_step()
+                likelihoods = np.array([self.model_accs.class_gaussian[j].log_prob(out[0]).detach().cpu().numpy() for j in range(self.model_accs.class_num)])
+                
+                softmaxes.extend(likelihoods)
                 out_bis = []
                 for t in out:
                     out_bis.append(t.detach().cpu())
@@ -707,11 +711,11 @@ class VMBDLSEngine:
                 eval_iterations += 1
                 if eval_iterations%1000 == 0:
                     print(eval_iterations/len(self.data_loaders["test"]))
-                if eval_iterations >= 10000:
-                    break
+                # if eval_iterations >= 10:
+                #     break
 
-            eval_df = self.eval_epoch_end(eval_outputs)  
-            eval_df = eval_df.insert('indices', indices)
+            #eval_df = self.eval_epoch_end(eval_outputs)  
+            #eval_df = eval_df.insert('indices', indices)
         
         # convert arrays to torch tensors
         #print("loss : " + str(eval_sloss/eval_iterations))
@@ -746,6 +750,7 @@ class VMBDLSEngine:
 
             # Save overall evaluation results
             print("Saving Data...")
+            np.save(self.dirpath + "likelihoods.npy", softmaxes)
             np.save(self.dirpath + "indices.npy", indices)#sorted_indices)
             np.save(self.dirpath + "labels.npy", labels)#[sorted_indices])
             # Compute overall evaluation metrics
@@ -786,7 +791,9 @@ class VMBDLSEngine:
         torch.save({
             'global_step': self.iteration,
             'optimizer': self.optimizer.state_dict(),
-            'state_dict': model_dict
+            'state_dict': model_dict,
+            "class_gaussian" : self.model_accs.class_gaussian,
+            "class_bounds" : self.model_accs.class_bounds
         }, filename)
         print('Saved checkpoint as:', filename)
         return filename
@@ -819,6 +826,8 @@ class VMBDLSEngine:
             # load network weights
             self.model_accs.load_state_dict(checkpoint['state_dict'])
             
+            self.model_accs.class_gaussian = checkpoint['class_gaussian']
+            self.model_accs.class_bounds = checkpoint["class_bounds"]
             # if optim is provided, load the state of the optim
             if self.optimizer is not None:
                 self.optimizer.load_state_dict(checkpoint['optimizer'])

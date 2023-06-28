@@ -38,11 +38,11 @@ class ResNetFullyConnected(nn.Module):
         self.cl_fc3 = nn.Linear(int(num_inputs // 4), int(num_inputs // 8))
         self.cl_fc4 = nn.Linear(int(num_inputs // 8), num_classes)
         self.relu = nn.ReLU(inplace=True)
-
+        self.dropout = nn.Dropout(p=0.3)
     def forward(self, x):
-        x = self.relu(self.cl_fc1(x))
-        x = self.relu(self.cl_fc2(x))
-        x = self.relu(self.cl_fc3(x))
+        x = self.relu(self.dropout(self.cl_fc1(x)))
+        x = self.relu(self.dropout(self.cl_fc2(x)))
+        x = self.relu(self.dropout(self.cl_fc3(x)))
         x = self.cl_fc4(x)
         return x
 

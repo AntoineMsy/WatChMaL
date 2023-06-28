@@ -41,9 +41,7 @@ class H5CommonDataset(Dataset, ABC):
         self.h5_path = h5_path
         with h5py.File(self.h5_path, 'r') as h5_file:
             self.dataset_length = h5_file["labels"].shape[0]
-
-        self.label_set = [0,1,2]
-
+        self.label_set = None
         self.initialized = False
 
     def initialize(self):
@@ -57,7 +55,7 @@ class H5CommonDataset(Dataset, ABC):
 #        self.event_ids  = np.array(self.h5_file["event_ids"])
 #        self.root_files = np.array(self.h5_file["root_files"])
         self.labels = np.array(self.h5_file["labels"])
-
+        
         self.positions  = np.array(self.h5_file["positions"])
         self.tpositions = self.positions
         self.angles     = np.array(self.h5_file["angles"])
